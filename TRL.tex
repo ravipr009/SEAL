@@ -31,7 +31,7 @@
 \newtheorem{proposition}{Proposition}
 
 \begin{document}
-\title{SEAL: Learning Mode Localization Functions from\\ Safe Demonstrations for Reactive Long-Horizon Manipulation}
+\title{SEAL: Safe, Efficient Active Learning for\\ Task-Level Recovery in Long-Horizon Manipulation}
 
 \author{Anonymous Authors% <-this % stops a space
 }
@@ -48,16 +48,6 @@ Learning from Demonstration, Hybrid Control, Task-Level Failure Recovery, Active
 \end{IEEEkeywords}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\section{Introduction}
-Long-horizon manipulation is commonly addressed by decomposing a task into subtasks with associated skills~\cite{dalal2024manipgen,Ahn2022DoAI,wu2023tidybot,huang2022inner,merging_dmp}, each learned via reinforcement or imitation learning. Yet real-world execution introduces physical perturbations that can induce \emph{task-level} failures even when the low-level motion policy executes flawlessly. Consider a robot transporting a payload: an external disturbance may merely deflect the path---from which a motion policy such as a Dynamic Movement Primitive~\cite{Ijspeert_NC_2013} can spatially recover---or it may cause the payload to slip from the gripper, a task-level failure that reaching the target does not resolve. Robust manipulation therefore demands reactivity at both the motion \emph{and} the task level.
-
-We adopt the well-established view that task-level reactivity is naturally expressed as a \emph{hybrid automaton}: the joint robot--environment state space is partitioned into discrete \emph{modes} (e.g., \textit{scoop}, \textit{transport}, \textit{deposit}), each mode selecting an active skill, with transitions governing the sequencing. Two properties make such an automaton robust to perturbation. \emph{Goal reachability} ensures each skill drives the state to the next transition boundary, guaranteeing task progress; \emph{mode invariance} ensures the state remains within a mode until that boundary, so that an unexpected departure from a mode is precisely a task-level failure signal. Temporal-logic imitation~\cite{wang2022temporal} makes these conditions explicit and, when they hold for the learned per-mode policies, guarantees that any admissible discrete plan is realized by the continuous system.
-
-Crucially, in this formalism the discrete modes are only labels; the semantic content and the robustness both reside in the \emph{transitions} and in the function that grounds continuous state to modes. We call this the \emph{localization function} $L:\mathcal{X}\!\to\!\mathcal{M}$. Given the automaton, runtime reactivity reduces to \emph{localizing} the current continuous state onto the correct mode. The central practical question is therefore not \emph{whether} to use an automaton but \emph{how to obtain $L$}. As illustrated in Fig.~\ref{fig:seal_ltl_comp}, existing approaches occupy two extremes:
-\begin{itemize}
-\item \textbf{Hand-designed $L$.} Automaton- and temporal-logic-based methods require an expert to author a labeling function $L:\mathcal{X}\!\to\!2^{AP}$ mapping raw sensors to truth values over Atomic Propositions (APs), or to engineer a sensor model that detects invariance violations~\cite{wang2022temporal}. This demands specialized design expertise and is brittle to observation noise (Sec.~\ref{sec:scooping}).
-\item \textbf{Learned $L$ via perturbation.} GLiDE~\cite{wang2024grounding} learns the grounding by perturbing demonstrations, replaying them, and using an automatic success/failure oracle together with a reset mechanism to label thousands of rollouts. This removes hand-design but requires an outcome oracle and, critically, an environment that can be reset---an assumption that fails for contact-rich tasks where failures are unsafe or irreversible (e.g., spilled rice, a dropped payload).
-\end{itemize}
 
 \begin{figure}[t!]
 \centering
@@ -100,14 +90,27 @@ Crucially, in this formalism the discrete modes are only labels; the semantic co
 \caption{\textbf{The task automaton is shared; only the grounding of continuous state to modes differs.} All three methods operate over the \emph{same} designed automaton with modes $a$ (Scoop), $b$ (Transport), $c$ (Deposit), $d$ (Done) and their intended transitions. They differ solely in how the localization function $L$ is obtained: hand-designed for temporal-logic imitation (TLI); learned via unsafe perturbation, reset, and an outcome oracle for GLiDE; and learned from a few safe, segmented demonstrations with active queries for SEAL. A perturbation that changes the physical state re-localizes the robot onto the appropriate mode of the same automaton (red), yielding reactive recovery.}
 \label{fig:seal_ltl_comp}
 \end{figure}
+\begin{figure*}[t!]
+\centerline{\includegraphics[width=1\textwidth]{Figures/simple.png}}
+\caption{\textbf{Active learning of the localization function.} Initial human-segmented demonstrations train a weak classifier, which actively queries the operator for targeted sub-demonstrations at uncertain regions of the state space (bottom). Rather than optimizing low-level actions, SEAL establishes a hybrid control loop that decides only the correct discrete mode at runtime, enabling robust execution, failure detection, and automatic behavior re-routing at test time (right).}
+\label{fig:intro}
+\end{figure*}
+\section{Introduction}
+Long-horizon manipulation is commonly addressed by decomposing a task into subtasks with associated skills~\cite{dalal2024manipgen,Ahn2022DoAI,wu2023tidybot,huang2022inner,merging_dmp}, each learned via reinforcement or imitation learning. Yet real-world execution introduces physical perturbations that can induce \emph{task-level} failures even when the low-level motion policy executes flawlessly. Consider a robot transporting a payload: an external disturbance may merely deflect the path---from which a motion policy such as a Dynamic Movement Primitive~\cite{Ijspeert_NC_2013} can spatially recover---or it may cause the payload to slip from the gripper, a task-level failure that reaching the target does not resolve. Robust manipulation therefore demands reactivity at both the motion \emph{and} the task level.
+
+We adopt the well-established view that task-level reactivity is naturally expressed as a \emph{hybrid automaton}: the joint robot--environment state space is partitioned into discrete \emph{modes} (e.g., \textit{scoop}, \textit{transport}, \textit{deposit}), each mode selecting an active skill, with transitions governing the sequencing. Two properties make such an automaton robust to perturbation. \emph{Goal reachability} ensures each skill drives the state to the next transition boundary, guaranteeing task progress; \emph{mode invariance} ensures the state remains within a mode until that boundary, so that an unexpected departure from a mode is precisely a task-level failure signal. Temporal-logic imitation~\cite{wang2022temporal} makes these conditions explicit and, when they hold for the learned per-mode policies, guarantees that any admissible discrete plan is realized by the continuous system.
+
+Crucially, in this formalism the discrete modes are only labels; the semantic content and the robustness both reside in the \emph{transitions} and in the function that grounds continuous state to modes. We call this the \emph{localization function} $L:\mathcal{X}\!\to\!\mathcal{M}$. Given the automaton, runtime reactivity reduces to \emph{localizing} the current continuous state onto the correct mode. The central practical question is therefore not \emph{whether} to use an automaton but \emph{how to obtain $L$}. As illustrated in Fig.~\ref{fig:seal_ltl_comp}, existing approaches occupy two extremes:
+\begin{itemize}
+\item \textbf{Hand-designed $L$.} Automaton- and temporal-logic-based methods require an expert to author a labeling function $L:\mathcal{X}\!\to\!2^{AP}$ mapping raw sensors to truth values over Atomic Propositions (APs), or to engineer a sensor model that detects invariance violations~\cite{wang2022temporal}. This demands specialized design expertise and is brittle to observation noise (Sec.~\ref{sec:scooping}).
+\item \textbf{Learned $L$ via perturbation.} GLiDE~\cite{wang2024grounding} learns the grounding by perturbing demonstrations, replaying them, and using an automatic success/failure oracle together with a reset mechanism to label thousands of rollouts. This removes hand-design but requires an outcome oracle and, critically, an environment that can be reset---an assumption that fails for contact-rich tasks where failures are unsafe or irreversible (e.g., spilled rice, a dropped payload).
+\end{itemize}
+
+
 
 \textbf{Approach.} SEAL retains the designed automaton and learns its localization function from a small number of \emph{safe}, human-segmented demonstrations---never requiring resets, self-supervised rollouts, or failure data (Fig.~\ref{fig:intro}). The learned classifier is memory-less: it estimates the active mode from the instantaneous physical state rather than from the historical sequence. This is a deliberate design choice. Because demonstrations contain only successful, nominal transitions, any sequence-aware estimator would inherit a strong prior toward the nominal ordering and would therefore \emph{mask} exactly the anomalous transitions we must detect. A memory-less localizer instead reads the physical state at every control step, so that a perturbation which drives the state across a mode boundary is registered immediately and triggers recovery.
 
-\begin{figure}[t!]
-\centerline{\includegraphics[width=0.5\textwidth]{Figures/simple.png}}
-\caption{\textbf{Active learning of the localization function.} Initial human-segmented demonstrations train a weak classifier, which actively queries the operator for targeted sub-demonstrations at uncertain regions of the state space (bottom). Rather than optimizing low-level actions, SEAL establishes a hybrid control loop that decides only the correct discrete mode at runtime, enabling robust execution, failure detection, and automatic behavior re-routing at test time (right).}
-\label{fig:intro}
-\end{figure}
+
 
 \textbf{Contributions.}
 \begin{enumerate}
