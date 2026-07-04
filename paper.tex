@@ -1,0 +1,479 @@
+
+\documentclass[journal]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\pgfplotsset{compat=1.18}
+\definecolor{ieeeblue}{RGB}{0, 102, 204}
+\definecolor{ieeeorange}{RGB}{255, 128, 0}
+
+\begin{document}
+\title{SEAL: Safe and Efficient Abstraction Learning for Robotic Planning}
+
+
+\author{Anonymous Authors% <-this % stops a space
+}
+
+\maketitle
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{abstract}
+Long-horizon manipulation can be achieved by decomposing complex tasks into subtasks. A key challenge remains: how can we ensure a robot's execution respects implicit task constraints and recovers from real-world perturbations without relying on perfectly hand-engineered state machines or requiring unsafe failure demonstrations. We propose SEAL, an active learning framework that efficiently learns a robust symbolic mode classifier directly from a few successful, human-segmented demonstrations ? By leveraging a zero-shot semantic prior from an LLM paired with information-theoretic verification, SEAL automatically maps high-dimensional observations into a minimal, interpretable grounded state abstraction. The system then iteratively queries experts to label states only at uncertain mode boundaries or under-explored regions of the state space. Crucially, SEAL eliminates the need for simulated resets, self-supervised rollouts, or dangerous failure data. We validate our framework across multiple simulated and real-world manipulation tasks, including a 10-participant user study. Our results demonstrate that SEAL successfully closes the loop for open-loop motion policies—matching the efficiency of expert-tuned automata while achieving highly robust, low-latency execution against observation noise and spurious mode transitions.
+
+\end{abstract}
+
+\begin{IEEEkeywords}
+Task Planning, Semantic Modes 
+\end{IEEEkeywords}
+
+\section{Introduction}
+One approach to long-horizon manipulation is to decompose complex tasks into smaller subtasks with associated skills \cite{dalal2024manipgen,Ahn2022DoAI,wu2023tidybot,huang2022inner,merging_dmp}, which can be learned via reinforcement (RL) or imitation learning (IL). However, real-world execution introduces physical perturbations that can induce task-level failures even when the low-level motion policy executes successfully. For example, in a pick-and-place task where a robot is transporting a payload, an external disturbance might cause a path deviation; here, policies like Dynamic Movement Primitives \cite{Ijspeert_NC_2013} can enable spatial recovery to continue the task. Conversely, if the disturbance causes the payload to slip from the gripper, a task-level failure occurs even if the robot reaches the target location. To achieve robust long-horizon manipulation, policies must be reactive at both the motion and task levels.
+
+Our work casts integrated failure detection and recovery as a semantic mode classification problem. Instead of sequencing subtasks statically, we utilize a classifier to partition the joint robot-environment state space into discrete semantic modes (e.g., \textit{pick}, \textit{transport}, and \textit{place}) that dictate the active skill. Under this framework, task-level failures naturally alter the physical state and push the robot into a different mode, instantly triggering appropriate recovery behaviour. In subsequent sections, we demonstrate how this classifier is learned safely and efficiently across both discrete and continuous state variables.
+
+Casting failure recovery as a mode classification problem introduces restrictive trade-offs in existing approaches. Statistical anomaly detectors can flag out-of-distribution states but operate strictly as baseline failure indicators and struggle with spatial generalization. Supervised deep networks offer probabilistic classification similar to our formulation, but their end-to-end training depends on large datasets of unsafe failure demonstrations. Conversely, traditional automaton-based approaches manage both failure detection and recovery but require developers to hand-engineer transition rules or synthesize them from Linear Temporal Logic (LTL) specifications. As illustrated in Fig.~\ref{fig:seal_ltl_comp}, this paradigm forces an expert to hand-craft a labeling function, $L: \mathcal{X} \rightarrow 2^{AP}$, mapping raw sensor readings to truth values over discrete Atomic Propositions (APs), limiting accessibility for operators without specialized design expertise. 
+
+\begin{figure}[t!]
+\centerline{\includegraphics[width=0.5\textwidth]{/Users/ravi-imac/Library/CloudStorage/OneDrive-IndianInstituteofScience/Overleaf/SEAL/Figures/simple.png}}
+\caption{\textbf{Active learning of task abstractions for hybrid control :} Initial human-segmented demonstrations are used to train a weak supervisor, which actively queries the operator for targeted sub-demonstrations at uncertain regions of the state space (bottom). Rather than directly optimizing low-level actions, our framework establishes a hybrid control loop that decides strictly the correct discrete subtask at runtime, enabling robust execution, failure detection, and automatic behaviour re-routing at test time (right).}
+\label{fig:intro}
+\end{figure}
+SEAL completely bypasses intermediate Boolean logic, acting as an end-to-end probabilistic mapping that translates processed continuous features $X_{\text{min}}$ directly to semantic modes. At its core, SEAL decouples task-level failure recovery from low-level motion planning. Rather than engineering explicit recovery manoeuvrers, our framework operates as a continuous supervisory layer that maps instantaneous physical states directly to the appropriate subtask. Consequently, failure detection and recovery emerge naturally: when a physical perturbation alters the environment, the supervisor instantly re-routes the open-loop motion policy to the correct reactive mode without relying on historical sequence priors. 
+
+
+The primary contributions of this work are summarized as follows:
+\begin{enumerate}
+    \item A two-stage feature engineering pipeline utilizing a Large Language Model as a zero-shot semantic prior, verified via Mutual Information minimization, to automatically extract a minimal, spatially invariant state representation.
+    \item An uncertainty-aware learning and control framework that leverages a Gaussian Process Classifier to target expert queries at regions of high epistemic uncertainty offline, while functioning as a memory-less, confidence-gated supervisor to filter observation noise and enable low-latency task re-routing at runtime.
+    \item Extensive empirical validation across five simulated and real-world contact-rich manipulation tasks, including a 10-participant user study demonstrating that targeted active querying significantly reduces human demonstration overlap while improving execution accuracy.
+\end{enumerate}
+
+
+
+\section{Related Works}
+\textbf{Failure detection: } Failure detection in robotic manipulation is mainly done in two settings, one where it is treated as an anomaly or an Out-Of-Distribution (OOD) detection problem using statistical approaches and the other using supervised or self-supervised deep networks on high-dimensional data. In the first setting, approaches like \cite{eiband_intuitive_2019} and \cite{willibald_collaborative_2020} model the successful demonstration features along with their time-steps as a Gaussian Mixture Model (GMM). By conditioning the GMM on the time-steps, they are able to get the nominal trajectory on the features along with the covariances at each time-step. Then, at runtime, they calculate the Mahalanobis distance between the observed features and the expected features and set a minimum distance threshold to flag failures. \cite{hierarchical} uses a similar approach but conditions on the end-effector pose instead, arguing that important features are influenced by interaction dynamics rather than time. \cite{10.5555/3398761.3398779} models the training data as a Hidden Markov Model (HMM) and proposes an online anomaly detection algorithm by computing the distance between the probability distributions of the observations corresponding to the most frequent state detected in a sliding window of observations and the emission probability of the state in the fitted HMM. These approaches work well, however the fact that observations are OOD does not imply that failure will occur. Also, time-based methods require similar feature profiles in demonstrations and live rollouts, which may not be the case in the presence of perturbations, making them incompatible for spatial generalisation. 
+
+\cite{xu_can_2025} uses a learned distance metric on high-dimensional observations along with a time-varying threshold and shows improved performance over other learned and post-hoc methods on imitation learning policies. \cite{agia2024unpacking} uses a two-level approach with a VLM and a statistical measure indicating temporal action consistency for policies that predict multiple future actions. \cite{romer2025fiper} measures both uncertainty in actions via action-chunk entropy and in observations by detecting OOD states using random network distillation in the policy's observation embedding space. Consistency of actions is superior to that of observations because policies may generalise even to OOD observations, however these are only applicable to policies that have action-chunking like DP\cite{chi2024diffusionpolicy} or ACT\cite{Zhao-RSS-23}, unlike our approach, which can work on any policy and even pre-programmed skills. 
+
+There also exist several works proposing the use of VLMs for monitoring and recovery (\cite{sinha_real-time_2024, etukuru_robot_2024,elhafsi_semantic_2023,du_vision-language_2023,zhang_grounding_2023,pacaud_guardian_2025,agia2024unpacking}), but they either need a failure dataset to fine-tune the VLM or work in a question-answering framework where the VLM is not used continuously due to its high latency. In contrast, we use an LLM only during training and can have real time monitoring and recovery at upwards of 30 Hz using our lightweight classifier. Additionally because we learn the boundaries of the modes, we automatically adapt to user preferences (Ex: Does the user consider a final placement of 5 cm from the target as a success or failure). We do not present any comparison to TAMP frameworks as they mostly deal with planning over task and motions, whereas we deal with reactive sequencing over a fixed nominal sequence of tasks and motions. When TAMP frameworks do incorporate failure detection and recovery, they typically replan and re-optimize over the tasks and motions which is out of the scope of this work or use anomaly detection or VLM frameworks like we have mentioned. 
+
+In the second setting, \cite{9636455} treats anomaly detections as a supervised classification problem combining different sensor modalities and training a deep network on a dataset containing failure examples. In  \cite{sliwowski_conditionnet_2025}, the authors train a model to predict the current phase of an action and detect anomalies by comparing the detected and expected phases of action. \cite{11245878} uses the VLM from \cite{sliwowski_conditionnet_2025} along with a probabilistic anomaly detector and chooses the appropriate detector based on confidence. While these methods achieve end-to-end failure detection, the requirement of failure demonstrations makes them unsuitable for tasks where such data is unsafe or hard to collect. In contrast, we only require a few successful
+demonstrations.
+\begin{figure}[t!]
+\centerline{\includegraphics[width=0.5\textwidth]{/Users/ravi-imac/Library/CloudStorage/OneDrive-IndianInstituteofScience/Overleaf/SEAL/Figures/seal_ltl_comaprison.png}}
+\caption{\textbf{Structural comparison between traditional automaton based recovery and SEAL: }In the traditional framework, (Left)an expert must hand-engineer a discrete state machine alongside a labelling function which maps Continuous raw sensor features to the truth values of discrete Atomic Propositions (APs)—$r$ (spoon reaching target), $s$ (contents on spoon), and $t$ (task success)—which strictly govern deterministic transitions between sequential subtask nodes: $a$ (Scoop), $b$ (Transport), $c$ (Deposit), and $d$ (Done). (Right) SEAL completely bypasses intermediate Boolean logic. Continuous, invariant features ($X_{\text{min}}$) are mapped directly to semantic modes via a learned classifier. Execution is entirely memory-less: any mode can transition dynamically to any other mode (gray arrows), and runtime predictions are made independently of the historical state sequence.}
+\label{fig:seal_ltl_comp}
+\end{figure}
+
+
+\textbf{Semantic State Estimation: } This involves estimating what semantic state the robot is in from observations. The segmentation may be unsupervised, where the states are discovered, or supervised, where the states are defined. Among the former \cite{shi2023waypointbased} generates a minimal number of waypoints that can reconstruct the trajectory up to a specified error level when interpolated linearly. \cite{hierarchical} uses inverse reinforcement learning and probabilistic feature clustering to segment unsegmented demonstrations. Our work is mainly concerned with settings where the states are defined previously as discovered states based on motion characteristics, which may not correspond to the common-sense division of subtasks. 
+
+Examples of the latter include \cite{eiband_online_2023}, which proposes a method incorporating symbolic and learned data-driven skill recognition for online task segmentation. However, for symbolic skill recognition, each skill's pre and post-condition needs to be defined manually, and for the data-driven method, they require large amounts of examples of each skill.
+\cite{hegemann_learning_2022} uses binary predicates to ground sensor values, which are then fed into a decision tree to detect the states. \cite{9811675} uses predicate classifiers and then uses Bayesian state estimation to estimate the states. The drawback of purely predicate-based approaches is that a skilled designer has to design the predicates for each task and train the predicate classifier. Our method works with both predicates and continuous observations.
+
+Some other work includes \cite{sliwowski_m2r2_2025}, which proposes a learned representation of different observation modalities that can then be used in any Temporal Action Segmentation (TAS) \cite{TAS} algorithm. While the authors limit their experiments to Offline TAS, using their framework with Online TAS could work for runtime semantic state estimation. \cite{shah2022value} learns a state representation based on the value functions of low-level skills, where the value function comes from a trained Reinforcement Learning policy with a finite number of skills. This representation is shown to be robust to distractors and generalises well to novel environments.
+
+As an example of works that use modes for robust multi-step manipulation, \cite{wang2022temporal} demonstrated how policies that respect temporal logic specifications can be learned from demonstrations, but used hand-engineered mode classifiers, which require an expert to make and are often not robust to noise, as we show in Section~\ref{sec:scooping}. GLiDE \cite{wang2024grounding}, which is similar to our work in intent, closed this gap by proposing a method to learn mode boundaries by randomly perturbing unsegmented demonstrations and checking if they still followed the prescribed mode sequences. Then they learn the mode boundaries that best explain the success or failure of such perturbed trajectories.
+
+While they were able to learn mode boundaries from sparse success/failure feedback, unlike our work, which relies on expert segmentation, there are two main downfalls to their approach. They require perturbation of trajectories to probe mode boundaries. However, such perturbations may be unsafe and hard to reset in the real world, as in the case of a block slipping from a gripper. Additionally, these perturbed trajectories have to then be checked for correct mode transitions by an oracle, which is a hand-engineered mode classifier or an expert. These necessitate the development of perturbation strategies for each task, human involvement during perturbation or limiting its utility to simulators. In contrast, we learn the classifier from a few segmented expert demonstrations with minimal post-processing of observations, which is a more realistic setting for demonstrations involving demonstrators who are proficient in the task but not in model design.
+
+\begin{figure*}[t]
+    \centering
+
+    \includegraphics[width=\textwidth]{/Users/ravi-imac/Library/CloudStorage/OneDrive-IndianInstituteofScience/Overleaf/SEAL/Figures/framework.png}
+\caption{(a) Initial segmented demos are used to train a weak classifier. Additional demos are requested through uncertain points and the classifier is retrained to ensure proper coverage and approximation of the ground truth modes. (b) The LLM first proposes a set of processed features based on user prompt. It is checked for \textit{sufficiency} by comparing its MI against the labels and  The user is asked to re-prompt until a \textit{sufficient} set of features are found. Then MI is further used to find he \textit{minimal} subset from the selected features (c) After the first set of demos, we proceed to feature selection. Thereafter in further rounds and at test time the features are fixed and the selected features are used directly.}
+\label{fig:framework}
+\end{figure*}
+\section{Details of our method}
+
+
+\subsection{Preliminaries}
+
+The goal of our method is to efficiently learn a mode classifier $f: \mathcal{X}_{\text{min}} \to \mathcal{M}$ that maps a reduced state representation $\mathbf{x} \in \mathcal{X}_{\text{min}}$ to a discrete symbolic mode $m \in \mathcal{M}$. Rather than operating on the full, high-dimensional raw observation space defined by raw features $F_{\text{raw}}$, we define $\mathbf{x}$ as a minimal, task-relevant feature vector derived from the robot's raw sensors and proprioception. The exact definition and extraction of this minimal feature set $F_{\text{min}}$ is detailed in Section~\ref{sec:feature_engineering}. 
+
+The number of modes in $\mathcal{M}$ is finite and denotes the different subtasks that occur during manipulation. Any segmentation of tasks into modes is supported.
+
+\subsection{Initial Expert Demonstrations}
+An expert first provides a set of initial demonstrations for the complete task in the raw feature space, yielding $\mathcal{D}_{0,\text{raw}}$. We define a single trajectory as a sequence of feature states $\tau = \{\mathbf{x}_t\}_{t=1}^T$. The expert provides dense, per-point labels by segmenting the trajectory into discrete modes. Once the minimal feature set $F_{\text{min}}$ is determined (Section~\ref{sec:feature_engineering}), this raw data is processed into an initial working dataset of $N$ labelled trajectories:
+\begin{equation}
+\mathcal{D}_{0,\text{min}} = \{ (\tau_i, L_i) \}_{i=1}^N
+\end{equation}
+where each $\tau_i = \{\mathbf{x}_{i,t}\}_{t=1}^{T_i}$ represents the sequence of minimal feature vectors $\mathbf{x} \in \mathcal{X}_{\text{min}}$ and $L_i = \{m_{i,t}\}_{t=1}^{T_i}$ represents the corresponding sequence of mode labels. For the purpose of training our classification models, this dataset can be represented as the union of all labelled feature-mode pairs:
+\begin{equation}
+\mathcal{D}_{0,\text{min}} = \bigcup_{i=1}^{N} \bigcup_{t=1}^{T_i} \{ (\mathbf{x}_{i,t}, m_{i,t}) \}
+\end{equation}
+Segmentation is efficiently achieved by requiring the expert to provide a trigger signal upon the completion of each subtask. Crucially, the data collected in $\mathcal{D}_{0,\text{raw}}$ is not an overhead specifically for the classifier; since these are successful, expert-provided trajectories, they can serve a dual purpose as the primary training data for the low-level primitive motion policies. (However, to isolate the evaluation of our mode supervisor, we employ programmatic primitives in our experiments). The additional overhead of our method is thus restricted only to the segmentation signal, which we validate as being negligible in Section~\ref{sec:user_study}. We assume that all expert demonstrations strictly adhere to valid mode transitions and result in successful task completion.
+
+\subsection{Active Learning Loop}
+We utilise a Gaussian Process Classifier (GPC) for its ability to provide formal uncertainty estimates, which is central to our active learning framework. Unlike standard discriminative models, a GPC defines a distribution over latent functions $f$. Given a dataset $\mathcal{D}_{k,\text{min}}$ at iteration $k$, the posterior predictive distribution for a new test point $\mathbf{x}^*$ is given by the integral:
+\begin{equation}
+P(m \mid \mathbf{x}^*, \mathcal{D}_{k,\text{min}}) = \int \sigma(f^*) \, p(f^* \mid \mathcal{D}_{k,\text{min}}) \, df^*
+\end{equation}
+where:
+\begin{itemize}
+\item $P(m \mid \mathbf{x}^*, \mathcal{D}_{k,\text{min}})$ is the probability of the test point belonging to mode $m$.
+\item $\sigma(\cdot)$ is the Softmax link function mapping latent outputs to probabilities.
+\item $p(f^* \mid \mathcal{D}_{k,\text{min}}) = \int p(f^* \mid \mathbf{f}) \, p(\mathbf{f} \mid \mathcal{D}_{k,\text{min}}) \, d\mathbf{f}$ is the latent predictive distribution. This distribution is non-Gaussian because the latent posterior $p(\mathbf{f} \mid \mathcal{D}_{k,\text{min}})$ is non-Gaussian due to the non-conjugacy between the GP prior and the classification likelihood.
+\end{itemize}
+This integral is analytically intractable due to the non-linearity of the link function, necessitating approximation methods. We utilise Variational Inference to approximate the posterior with a tractable Gaussian distribution $q(\mathbf{f})$ using the GPyTorch library \cite{gardner2018gpytorch} for GPU acceleration.
+
+A key advantage of GPCs is the ability to explicitly decompose uncertainty. While many frameworks rely on \textit{aleatoric} uncertainty (ambiguity at class boundaries), our framework prioritises \textit{epistemic} uncertainty—the model's ignorance in regions with low data density. We quantify the epistemic uncertainty $\eta(\mathbf{x}^*)$ as the sum of the variances of the latent function distributions (logits) across all modes:
+\begin{equation}
+\eta(\mathbf{x}^*) = \sum_{m \in \mathcal{M}} \text{Var}(f^*_m)
+\end{equation}
+By using $\eta(\mathbf{x}^*)$, we identify regions where the classifier lacks sufficient demonstrations to generalise the mode segmentation. However, raw epistemic uncertainty often peaks at the far edges of the state space. To ensure the queried points remain within the robot's relevant workspace, we apply a centring weight $W(\mathbf{x}^*)$, modelled as a Gaussian prior over the workspace coordinates. The final acquisition score $\alpha(\mathbf{x}^*)$ is defined as:
+\begin{equation}
+\alpha(\mathbf{x}^*) = \eta(\mathbf{x}^*) \cdot W(\mathbf{x}^*)
+\end{equation}
+
+Our active learning loop proceeds as follows:
+\begin{enumerate}
+\item \textbf{Train Classifier:} Train the GPC on the current dataset $\mathcal{D}_{k,\text{min}}$ to obtain the predictive mean and variance across the state space.
+\item \textbf{Identify Candidate Pool:} We define a bounding box around the states explored in the initial demonstrations $\mathcal{D}_{0,min}$ and calculate $\alpha(x)$ for a dense grid of points within these bounds and define a candidate pool $\mathcal{U}_{\text{top}}$ consisting of points with the top $10^{\text{th}}$ percent of acquisition scores.
+\item \textbf{Diverse Batch Selection:} To select a diverse set of $K$ query points from $\mathcal{U}_{\text{top}}$, we utilise a greedy furthest-point sampling (FPS) strategy. We initialise the batch with:
+\begin{equation}
+\mathbf{x}_1 = \operatorname*{argmax}_{\mathbf{x} \in \mathcal{U}_{\text{top}}} \alpha(\mathbf{x})
+\end{equation}
+Subsequent points $\mathbf{x}_k$ are selected to maximise the minimum Euclidean distance to the existing batch $X_{k-1}$:
+\begin{equation} \label{eq:sampling}
+\mathbf{x}_k = \operatorname*{argmax}_{\mathbf{x} \in \mathcal{U}_{\text{top}} \setminus X_{k-1}} \left( \min_{\mathbf{x}_j \in X_{k-1}} \| \mathbf{x} - \mathbf{x}_j \|_2 \right)
+\end{equation}
+\item \textbf{Query Expert:} We request additional segmented expert demonstrations $\mathcal{D}_{\text{new},\text{raw}}$ that pass through these points $X_K$. This directs expert effort toward informative regions where the model's epistemic uncertainty is high. These can be full or partial demonstrations passing through or starting from the query points. The expert provides prescriptive labels - the semantic mode that should be executed from that state to advance the task.
+\item \textbf{Retrain:} New demonstrations are post-processed directly into the $F_{\text{min}}$ format yielding $\mathcal{D}_{\text{new},\text{min}}$. The dataset is updated, $\mathcal{D}_{k+1,\text{min}} = \mathcal{D}_{k,\text{min}} \cup \mathcal{D}_{\text{new},\text{min}}$. In our experiments, we choose to stop after one round of active learning and train our final classifier on $\mathcal{D}_{1,\text{min}}$.
+\end{enumerate}
+
+\subsection{Two-Stage Feature Engineering via LLMs and Mutual Information} \label{sec:feature_engineering}
+For our active learning loop, we rely on features for which every sample is physically realisable and semantically interpretable for expert demonstration and labelling. For example, a sample drawn by the GPC from a high-dimensional observation space, like raw pixels, is not physically grounded, may not correspond to a plausible physical scenario and is hard for an expert to label. Therefore, we first use grounded features like positions and orientations of task-relevant objects. However, even the absolute poses of a few objects can increase the dimensionality of our state-space to over 10. While this is technically usable for our framework, there are two key challenges: First, the curse of dimensionality significantly increases sample complexity, requiring a prohibitively large number of demonstrations to achieve dense coverage. Second, the physically valid manifold constitutes only a small fraction of the total ambient space; sampling as done in Equation~\ref{eq:sampling} frequently yields physically inconsistent configurations—such as objects suspended in mid-air which are impossible for an expert to demonstrate or for the robot to reach - even due to a failure.
+
+Since it is challenging for an operator not familiar with feature engineering to manually construct a reduced representation, we employ a two-stage feature engineering pipeline: Semantic Generation followed by Mathematical Minimization (Figure~\ref{fig:framework}b).
+
+\textbf{Stage 1: Semantic Generation.} We utilize a Large Language Model (LLM) \cite{gemini} to act as a semantic prior. The LLM is prompted with the task description, available raw features $F_{\text{raw}}$, and target modes. It outputs an initial selected feature set $F_{\text{sel}}$, designed to penalize absolute coordinates in favor of spatially invariant relative metrics. We process the initial raw demonstration data into this selected feature space, yielding the data matrix $X_{\text{sel}}$. To rigorously verify the sufficiency of $F_{\text{sel}}$, we calculate the joint Mutual Information (MI) of $X_{\text{sel}}$ against the discrete mode labels $Y$, using a $k$-nearest neighbour MI estimator formulated for mixed continuous-discrete datasets \cite{10.1371/journal.pone.0087357}. If $I(X_{\text{sel}}; Y) \ll I(X_{\text{raw}}; Y) \approx H(Y)$, the LLM has discarded critical information. In this event, the system rejects $F_{\text{sel}}$ and prompts the user to provide a more detailed task description to resolve the ambiguity.
+
+\textbf{Stage 2: Mathematical Minimization.} Once a sufficient $F_{\text{sel}}$ is generated such that $I(X_{\text{sel}}; Y) \approx I(X_{\text{raw}}; Y)$, we prune it for informational redundancy. We systematically evaluate lower-dimensional projections of $X_{\text{sel}}$ by sequentially removing feature columns corresponding to subsets of $F_{\text{sel}}$. We define $X_{\text{min}}$ as the lowest-dimensional projection that preserves the baseline MI. The corresponding feature subset is finalized as $F_{\text{min}}$. In cases where $F_{\text{sel}}$ contains no redundant features, $F_{\text{min}}$ resolves to $F_{\text{sel}}$.
+
+By allowing the LLM to enforce physical invariants and relying on MI to eliminate statistical redundancies, we yield a highly efficient, causally robust state space $\mathcal{X}_{\text{min}}$. In all future active learning rounds, new data is collected as $\mathcal{D}_{k,\text{raw}}$ and processed directly into the $F_{\text{min}}$ format.
+
+
+\subsection{Mixed-Feature Space Representation}
+Robotic states frequently mix continuous variables $\mathbf{x}_{\text{cont}} \in \mathbb{R}^d$ (e.g., relative distances) and discrete variables $d \in \mathbb{N}$ (e.g., gripper status). Applying a standard RBF kernel across this joint space naively assumes identical spatial correlation regardless of context, while training independent classifiers for each discrete state is highly data-inefficient.
+
+To resolve this, we map the mixed-feature space $\mathbf{x} = [\mathbf{x}_{\text{cont}}, d] \in \mathcal{X}_{\text{min}}$ using a \textit{Product Kernel}:
+\begin{equation}
+k(\mathbf{x}, \mathbf{x}') = k_{RBF}(\mathbf{x}_{\text{cont}}, \mathbf{x}'_{\text{cont}}) \cdot k_{\text{idx}}(d, d')
+\end{equation}
+where $k_{RBF}$ evaluates the continuous space and $k_{\text{idx}}$ is an \textit{Index Kernel} that learns a low-rank covariance matrix $\mathbf{B}$ between discrete indices.
+
+Unlike a strict Kronecker delta function, a learnable $\mathbf{B}$ allows the GPC to autonomously determine the degree of information sharing across discrete contexts. The model can exploit correlations across states to improve data efficiency, or converge to an identity-like structure to isolate distinct modes. Finally, during active learning candidate selection, we fix the discrete variables and sample continuously across these contexts.
+
+\subsection{Failure detection and Task-Level Recovery}
+Once the GPC is trained, it serves as a supervisory layer over the robot's motion policies. We assume a base motion policy consisting of a set of primitives or sub-policies $\{\pi_m\}_{m \in \mathcal{M}}$, where each $\pi_m$ is associated with a specific mode $m$ (e.g., a "Pick" policy conditioned on a box pose). A nominal task plan is represented as a sequence of these modes $\{m_1, m_2, \dots, m_K\}$ required to complete the objective. These policies can be learned from demonstrations like the ones in $\mathcal{D}_{0,\text{min}}$, or be pre-programmed.
+
+ The formal execution logic, including our confidence-gating mechanism for failure detection, is detailed in Algorithm~\ref{alg:supervision}.
+
+We note that the mapping performed by the classifier $f: \mathcal{X}_{\text{min}} \rightarrow \mathcal{M}$ is entirely memory-less, evaluating only the instantaneous continuous-discrete feature vector $x_t$ at time $t$. Because $\mathcal{D}_{0,min}$ is compiled exclusively from successful nominal demonstrations, any sequence-aware model would inherently inherit a strong transition prior tightly coupled to valid, sequential subtask progressions. In the event of a failure that forces an invalid mode transition (e.g., dropping a payload mid-transport), a sequence-dependent model would likely fail to recognize the deviation, instead assigning a high posterior probability to the historical nominal trajectory. Eliminating memory ensures that the classifier evaluates the physical state of the environment  at every control loop step, allowing the classifier to instantly register anomalous mode transitions and move to the recovery mode immediately. 
+\begin{algorithm}
+\caption{Confidence-Gated Mode Supervision}\label{alg:supervision}
+\Require GPC model $\mathcal{M}$, nominal sequence $S$, confidence threshold $\tau$, persistence $N_{\text{thresh}}$
+\State $m_{\text{current}} \gets \text{first mode in } S$
+\While{task is not complete}
+\State $\mathbf{x}_t \gets \text{extract relative features } F_{\text{min}} \text{ at time } t$
+\State $m^*, prob^* \gets \text{predict mode and confidence via GPC}(\mathbf{x}_t)$
+\State \Comment{Override nominal mode if a confident failure is detected}
+\If{$m^* \neq m_{\text{current}}$ \textbf{and} $prob^* > \tau$ for $N_{\text{thresh}}$ consecutive steps}
+    \State $m_{\text{current}} \gets m^*$ 
+\EndIf
+
+\State \textbf{Execute} step of policy $\pi_{m_{\text{current}}}(\mathbf{x}_t)$ 
+
+\State \Comment{Advance nominally upon subtask completion}
+\If{\text{if } $\pi_{m_{\text{current}}}$ signals completion}
+    \State $m_{\text{current}} \gets \text{next mode in } S$
+\EndIf
+\EndWhile
+\end{algorithm}
+
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\textwidth]{Figures/2d_nav_figure.png}
+    \caption{\textbf{2D Navigation:} (a) shows that the learned GPC boundaries match the ground truth. (b) shows perturbation (in orange) and the robot recovering (in red) and following the correct mode sequence.}
+    \label{fig:2d_recovery}
+\end{figure*}
+
+
+\section{Experiments}
+We evaluate SEAL on multiple real-world and simulated environments and highlight the various advantages of our method.
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=0.5\textwidth]{Figures/comparison_GLiDE.png}}
+\caption{Comparison of the classification performance of the different methods.  (b) uses 6+6 demos, (c) uses only the original 6 demos and (d) uses 6 demos + 1000 perturbed rollouts.}
+\label{fig:comparison}
+\end{figure}
+\subsection{2D Navigation (Simulation and Hardware)} \label{sec:2d_nav}
+This experiment, replicated from GLiDE, consists of 2D regions denoted by different colours. The objective is to move from the starting region to the end region in the correct order shown in Fig. \ref{fig:comparison} (a).
+
+
+
+We initially request 6 demonstrations of how to navigate from mode 1 to mode 4, starting from different points. For SEAL, following the method described above, we train a classifier initially and choose 6 uncertain points. We then request 6 additional demonstrations passing through these points and retrain the classifier on the combined 12 demonstrations.$F_{\text{min}}$  is simply the $(x,y)$ coordinates at each time step. For comparison, we train a classifier using GLiDE with the 6 initial demonstrations as seeds and generating simulated perturbations as described in GLiDE. Note that since in this particular task we care more about accurate boundary detection between modes rather than labelling the entire state-space, we use the margin uncertainty.
+
+Figure~\ref{fig:comparison} shows the classifier performance for SEAL before and after additional demonstrations and GLiDE. As shown, our method (b) is close to the ground truth classification (a). The improvement in (b) over (c), which is without the second set of demonstrations, shows the utility of our active learning approach. Table~\ref{tab:miou_results} shows the Mean Intersection over Union (mIoU) of different methods against the Ground Truth classification. Our performance matches that of GLiDE with 1000 perturbed trajectories. Also evident is how the performance of the other method drops when the number of perturbed trajectories used is reduced.
+
+\begin{table}[h]
+    \centering
+    \caption{Mean IoU Comparison on 2D Navigation}
+    \label{tab:miou_results}
+    \begin{tabular}{lc}
+        \toprule
+        \textbf{Method} & \textbf{mIoU} \\
+        \midrule
+        SEAL (Ours) & \textbf{0.82} \\
+        GLiDE (1000 perturbations) & 0.80 \\
+        SEAL (Naive) & 0.73 \\
+        GLiDE (400 perturbations) & 0.63 \\
+        GLiDE (100 perturbations) & 0.53 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Note that SEAL never uses the ground truth information during training, unlike GLiDE, which uses an oracle in the form of ground truth information to verify the success of perturbed trajectories. We do not claim that our method surpasses the performance of GLiDE, which solves the harder task of learning from sparse labels, but only argue that we can match it with only a little more human effort and without the need for an oracle, perturbation strategies or an environment that can reset autonomously.  
+
+We replicate the above experiment in the real world using a Franka FR3 7-DOF robot arm using 6+6 total demos as shown in Figure~\ref{fig:2d_recovery}. 
+While the above experiments demonstrate the efficacy of SEAL, they are mainly illustrative in nature. We now consider some common manipulation tasks.
+
+
+\subsection{Wiping}
+This experiment evaluates reactive recovery in a continuous, contact-rich scenario.
+
+
+\textbf{Setup:} A Franka FR3 utilizing an eraser must clean a localized whiteboard marker line across 3 modes: \textit{approach\_align}, \textit{wipe}, and \textit{done}. SEAL trains a GPC supervisor using only $2$ demonstrations. Random external force perturbations are applied to the end-effector to break surface contact or displace it from the path.
+
+ \textbf{Results:} The open-loop policy fails completely under perturbation, while the SEAL-supervised policy continues executing until reaching the \textit{done} state, substantially improving the wiped fraction (Figure~\ref{fig:robosuite_wiping}). Recovery behaviours emerge reactively: path displacement triggers a transition from \textit{wipe} back to \textit{approach\_align}, and incomplete cleaning triggers a transition from \textit{done} back to \textit{approach\_align}.
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\textwidth]{Figures/compilation.png}
+    \caption{\textbf{Experimental Setups:} The above image shows the experimental setup for Robosuite Stack (a), Wiping (b), Scooping (c) and Pick and Place (d) tasks }
+    \label{fig:compilaion}
+\end{figure*}
+
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=0.5\textwidth]{Figures/robosuite_wiping.png}}
+\caption{\textbf{Comparison against open loop nominal policies:} Motion policies with a SEAL supervisory layer do not cause any degradation of performance in the absence of perturbations (light grey and light green) and improve performance significantly in the presence of perturbations (dark grey and dark green)}
+\label{fig:robosuite_wiping}
+\end{figure}
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\textwidth]{Figures/stacking_pnp.png}
+    \caption{\textbf{Comparisons with Automata:} In the Scooping task, using confidence-gated transitions SEAL reduces the number of false positive transitions, leading to faster completion and smaller path lengths across thresholds. In the stacking task in both Nominal and Perturbed conditions, SEAL performs better in all the task efficiency metrics. (In all plots lower values indicate better performance)}
+    \label{fig:scooping_pnp}
+\end{figure*}
+
+\subsection{Block Lifting and Stacking (Robosuite)}
+We evaluate performance on non-monotonic features using the Lift and Stack environments in Robosuite \cite{robosuite2020} as shown in Figure~\ref{fig:compilaion} (a).
+
+
+\textbf{Setup:} Gripper width is mapped to a binary \textit{grasped} feature to handle its non-monotonic profile. Using relative end-effector-to-cube distances, SEAL is trained on $7$ $(3\text{ nominal} + 4\text{ active})$ demonstrations while maintaining separate continuous boundaries for each gripper status. This is an example of a task where a mixed feature space might be useful.
+
+\textbf{Results:} We benchmark success rates over $100$ episodes under random gripper perturbations. While maintaining a near-perfect success rate during nominal operations, SEAL dramatically mitigates performance degradation during perturbed trials compared to the open-loop baseline (Figure~\ref{fig:robosuite_wiping}).
+
+
+\subsection{Scooping}\label{sec:scooping}
+We also adopt the scooping task from GLiDE as one of our experiments. The objective is to scoop, transport and deposit rice from a bowl to a plate, using a spoon attached to the end effector of the manipulator.
+
+
+ \textbf{Setup:} Open-loop execution will fail at a task level if the rice spills out of the spoon during transport or if the scooping action is unsuccessful. This is an example of a task where failure demonstrations—where the rice spills out during execution—are hard to reset from and collecting self-supervised data like in GLiDE is infeasible. We use a wrist camera to detect grains of rice on the spoon and the relative positions of the end effector to the bowl and plate as the other features. We use the detection of grains as a binary feature, and train a classifier using SEAL using 4 total demonstrations.
+    
+    As in previous experiments, the performance of the closed-loop SEAL model is better than that of the open-loop policy. But we ask another question: how does it compare to an automaton that has predefined rules regarding transition rules with expert-tuned thresholds for states—essentially the ground truth for a mode classifier. We design and tune such an automaton for this scooping task on the same features as we use for SEAL. We expect such an automaton to be an ideal classifier, while learned classifiers can only approximate it from demonstrations, but have an advantage in terms of ease of construction.
+    
+\textbf{Results:} We now present another advantage of a learned classifier like SEAL. For all types of classifiers—designed and learnt—because of the inherent noise in features and hence in the prediction from the classifier, especially near boundaries, all transition decisions have to be taken after a small interval of continuous switch predictions to avoid false positive transitions, leading to latency in the case of an actual transition. Larger buffers lead to fewer false positives at the expense of more latency and vice versa. However, for SEAL, since we have access to the confidence of predictions, we can filter out low-confidence switch predictions and keep a very small buffer instead, essentially smoothing out random jumps near boundaries between modes. If there is an actual mode transition due to perturbation, it typically pushes the state inside a mode far from boundaries, where the confidence is higher, leading to a fast response. Thus, SEAL gives us low latency and low false positive rates at the same time.
+    
+    To validate this hypothesis, we run this task over 24 trials, testing both Automata and SEAL-based policies with varying levels of perturbations and transition thresholds. Note that none of these perturbations causes actual task-level failure; they are used to test resistance to noise in the observations. As shown in Fig.~\ref{fig:scooping_pnp}(a-d), both policies achieve 100\% eventual task completion in all cases, showing that the SEAL classifier is a good enough approximation of the Automata classifier. However, due to the confidence-gated transitions in SEAL, we observe that as that transition threshold becomes smaller, SEAL does not suffer any false positive transitions, while this number increases for the Automata (b). As a result, the Automata policy performs worse, having significantly higher average completion times (d) and covering more distance (c). These results highlight that, in addition to being easier to construct, SEAL policies can identify failures faster while being robust to false positive transitions. We note that, as with any learned model, the classification accuracy of SEAL depends on the quality of demonstrations and that a classifier trained on low-quality data cannot beat an Automata policy in task performance, even with confidence gating.
+
+
+
+\subsection{Pick and Place}
+
+\textbf{Setup: }
+The objective of this task is to pick a box from its current location and place it near the target, both of which are tracked using AprilTags \cite{7759617} and a RealSense D435i camera.
+This task is more complicated with gripper pick and place motions, leading to a lower base success rate and one in which collecting failure demos, like those in which the object falls out from the gripper, is potentially unsafe. We divide the task into \textit{Pick}, \textit{Transport}, \textit{Place} and \textit{Retreat modes} and have a separate object conditioned motion policy for each subtask.  We only use 2 total demonstrations, with features such as relative distances and a binary gripper state to train a SEAL classifier for this task.
+
+\textbf{Results} As in scooping, we define and tune an Automata policy as well and over 42 trials, run both policies with different perturbations to test the effect of both classifiers. Here, perturbations involved moving the objects around during execution manually, causing grasp failures and incorrect placement locations and pulling the box out of the gripper mid-transport to simulate collisions with the environment. Here, unlike the scooping task, we opt to keep the transition threshold fixed and vary the starting and goal positions to test generalisation. Just like scooping, we observe that all metrics of task efficiency, like time to completion, path length, etc., are worse for the Automata policy when compared to SEAL, albeit with a smaller margin than that of scooping.
+
+
+\section{User Study - Restocking}
+\label{sec:user_study}
+
+Over several experiments, we have shown the various advantages of SEAL over open-loop policies, past approaches and automata-based methods. However, till now, all demonstrations were collected by the authors. Since the performance of a Learning from Demonstrations (LfD) approach like SEAL depends heavily on the user, we conduct a user study on 10 participants with varying degrees of familiarity with kinesthetic demonstrations and LfD concepts. The task of choice is a restocking task adapted from Ajanović et al.\cite{11369949}. In their original work, the authors designed a supermarket scenario to evaluate sequential teaching methods, requiring a robot to move items from a basket to a shelf. While their implementation relied on fixed object locations, our adaptation tracks the bottle and the basket dynamically, enabling the classifier to generalize across varying spatial configurations. The authors concluded, using a user study, that (i) users exhibited a wide range of preferences, with some users preferring a continuous demonstration for a task, while others preferred providing segmented demonstrations and (ii) that on average, policies learned using segmented demonstrations were slightly smoother and more successful at the cost of increased demonstration time.
+These findings support our use of segmented demonstrations to learn motion and task-sequencing.
+
+The restocking task is one that is commonly encountered in a supermarket scenario - a product, in this case a bottle, is sitting inside a basket and must be placed onto a shelf. There are some constraints on the task - since the basket is cluttered, the bottle must be grasped from the top, and while placing it onto the shelf, due to a small shelf height, it must be grasped from the side. This necessitates us to pick the bottle from the top, place it onto a table, re-grasp it from the side and then place it onto the shelf - which provides a logical decomposition of the task into \textit{Grasp\_Top}, \textit{Place\_Table}, \textit{Grasp\_Side} and \textit{Place\_Shelf} subtasks as shown in Figure~\ref{fig:restocking_banner}. To evaluate the core idea of SEAL, we use the LLM to also fix the features we will use, leaving only the quality and diversity in user demonstrations as variables. Based on the feedback from a pilot study with a few participants, we chose the following format for the study:
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\textwidth]{Figures/restocking_banner.png}
+    \caption{\textbf{Setup of the Restocking Task:} We choose to divide the task into these stages to isolate the effect of SEAL active learning loop.}
+    \label{fig:restocking_banner}
+\end{figure*}
+
+\begin{enumerate}
+    \item The participant is familiarised with the task and instructed specifically to provide two segmented demonstrations of the task with the aim of maximising diversity. Exactly how is left to the participants - they can choose to change the initial scene, choose different place locations on the table, grasp from different angles, etc. These 2 demonstrations are considered the \textit{unguided} dataset, as no guidance was provided, and they serve as the baseline.
+
+    \item We use only the first demonstration from the unguided dataset as a seed and train the GPC. We then choose 4 uncertain points from the classification using the centre-weighted epistemic uncertainty as our metric, two where the gripper is open and two where it is closed.
+
+    \item We then set up a scene corresponding to an uncertain point and ask the participant to label and demonstrate the correct action from that state, only till that action is complete. This process is repeated for all 4 points, and we will have 4 sub-demos. The first demonstration, along with these 4 sub-demos, forms the \textit{SEAL Guided} dataset.
+
+    \item Participants also answer qualitative questions concerning ease of use, preferences and confidence in demos for both types of demonstrations.
+
+\end{enumerate}
+
+This process differs from the data collection for our other experiments in a few ways. The number of demonstrations was kept at 2 to demonstrate the utility of SEAL in a low-data regime and because participant frustration was noted to be high when they had to provide a larger number of demos. In the re-query phase, instead of requesting 4 full demos passing through uncertain points, we ask for 4 sub-demos instead, making the SEAL dataset (1 full demo + 4 sub-demos) comparable in terms of number of data points and time spent collecting, to the Unguided dataset (2 full demos). Additionally, this method of querying was seen to be much more intuitive for participants and much more efficient, as there is very little overlap between sub-demos.
+
+We mainly aimed to test several hypotheses:
+\begin{enumerate}
+    \item Even when instructed to maximize diversity, users provide demonstrations with significant state-space overlap.
+    \item SEAL explicitly asks for demos where the classifier is uncertain, and there is less data, thus the SEAL guided dataset will give a better classifier.
+    \item Users will prefer the SEAL method as it reduces cognitive load during demonstrations.
+\end{enumerate}
+
+To test this hypothesis, we ran a user study with 10 participants with varying levels of familiarity with operating robots and Machine Learning/Active Learning. As indicated above, the final dataset consists of 20 sets of demonstrations, with one \textit{Unguided} and one \textit{SEAL Guided} dataset per participant.
+
+
+
+\textbf{Diversity of Demos:} To test the diversity of the demonstrations, we use the following metric: Since the first demonstration is common for both datasets, we measure the Mean Minimum Distance of all points in subsequent demonstrations to points in the same mode in the first demonstration.
+$$\text{MMD}(A, B) = \frac{1}{|B|} \sum_{b \in B} \min_{a \in A} \| a - b \|$$
+
+The SEAL dataset ($\mu = 0.247, \sigma = 0.078$) shows significantly higher diversity compared to the Unguided baseline ($\mu = 0.096, \sigma = 0.108$);  with a t-value of $t = 4.17, (p < 0.01)$, thus validating our first hypothesis. This should directly lead to better classifier performance.
+
+\textbf{Classifier Performance: } We train 20 GPC models on the 20 datasets and calculate the mIoU against a ground truth classification for the task. To account for individual expertise, we focus on the relative change in mIoU between Unguided and SEAL dataset-trained classifiers for each participant. As shown in Figure~\ref{fig:participant_perf}, 7 out of 10 participants improved their performance with SEAL, with 2 others having only minor reductions well within the variance between training runs.
+This supports our second hypothesis.
+We note that one participant (P09) showed a clear reduction in performance with SEAL. It was seen that they provided labels not aligned with the ground truth classification during the SEAL demonstrations, which led to reduced performance.
+
+
+
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=0.5\textwidth]{Figures/pref.png}}
+\caption{\textbf{Comparison of User Preferences: } More users prefer SEAL guidance over Unguided demonstrations in terms of Comfort, Trust in performance and Perceived Effectiveness in a head-to-head comparison.}
+\label{fig:user_pref}
+\end{figure}
+
+
+\textbf{User Preferences:} As seen in Fig~\ref{fig:user_pref}, more people preferred SEAL over Unguided data collection in terms of Ease of Use, Trust in Performance and Efficiency in a direct comparison. In responses collected after each data collection, participants were also asked to rank how mentally and physically demanding each set of demonstrations was on a scale from 1 to 5. Comparing these results, there is a small reduction in mental effort from using SEAL $(2.6 \to 1.8, p = 0.125 )$. For the other questions, like "How physically tiring was it to guide the robot arm through the task?" and "How hard did you have to work to achieve a 'good' demonstration?", no statistical difference could be found between SEAL and Unguided demonstrations. This validates our third hypothesis partially, as although more users prefer SEAL over unguided, we cannot claim preference for SEAL across the board with statistical significance. 
+
+Also interesting to note is that participants are also similarly confident in both sets of their demonstrations, as shown by the answers to the question "I am confident the robot will correctly recognise the intended mode in a new, unseen situation," being similar between SEAL and Unguided groups.
+This aligns with our intuition that participants misjudge the diversity of their demonstrations and the resulting classifier performance.
+
+
+\begin{figure}[htbp]
+\centerline{\includegraphics[width=0.5\textwidth]{Figures/miou.png}}
+\caption{\textbf{mIoU comparison:} Classification performance of SEAL and Unguided dataset-trained models per participant. Average over 10 training runs reported. Error bars show $\pm 1$ SD from the mean.}
+\label{fig:participant_perf}
+\end{figure}
+
+
+\section{Conclusions and Limitations}
+
+We present the SEAL framework and show how a mode classifier can be learned efficiently from a few human demonstrations, and help multi-step Learning from Demonstration policies become robust to task-level perturbations. Further, we demonstrate the advantages of our work over previous approaches in this domain.
+
+While our approach is promising, it has limitations that warrant future work. As mentioned earlier, high-dimensional observations like images cannot be directly used in an active learning loop and have to be processed into relevant low-dimensional features (object positions, relations, etc. ). It was also noted during the user study that participants had to see the new query states in the real world before they could label them and were unable to set up the scene themselves, which necessitated the authors having to set up the scene and then ask the users for labelling and sub-demonstrations, which is a bottleneck in the teaching process. Future work could explore how to visualise the query points for users to reduce this bottleneck.
+
+Another natural extension of this work is the fully end-to-end integration of SEAL with learned motion primitives. Because our framework already extracts the necessary demonstration data and mode boundaries with negligible overhead, future work will focus on jointly training the Gaussian Process Classifier alongside imitation-learning-based policies, entirely replacing the programmatic controllers used in this study's evaluation. Furthermore, because the SEAL active learning loop specifically targets informative, low-density regions of the state space, the resulting primitives are expected to exhibit significantly greater robustness and out-of-distribution generalization than policies trained on standard, unguided demonstration sets.
+
+Recent works have shown the ability of Vision Language Models to automatically segment human demonstration videos into subtasks \cite{wang2024vlmseerobotdo}, which can relieve the burden of providing segmentation and labelling from the expert and opens up the possibility of learning from pre-existing demonstrations.
+
+Another improvement to improve performance would be to understand why the failure occurred and modify the motion policy to prevent future failures. Currently, we deal with fixed motion policies and if the environment changes in a way that causes a particular subtask to always fail - SEAL cannot successfully complete the task. Because we have access to the epistemic uncertainty, we could use monitor runtime uncertainty and and halt execution and re-query the expert on the fly. This could directly be added to the current framework by calibrating for a uncertainty threshold.
+
+
+\appendices
+
+\section{Classifier Architecture}
+ \begin{figure*}[t]
+\centering
+\includegraphics[width=1\textwidth]{Figures/ablation.png}
+\caption{Performance of different classifier models. The mIoU is reported in brackets.}
+\label{fig:ablation}
+\end{figure*}
+    We performed an ablation study on the model of the classifier on the simulated 
+    2D Navigation task by switching out our GP classifier for Multilayer Perceptron, Logistic Regression and K Nearest Neighbour classifiers. All classifiers were trained on the same dataset of demonstrations, and hyperparameter tuning was also done. The results are shown in Figure~\ref{fig:ablation}.
+    As expected, the simpler KNN and Logistic Regression classifiers don't fit the data well, while the MLP shows a mIoU closer to the GPC. 
+
+    However, unlike an MLP, which can produce overconfident predictions in regions far from the training data, a GPC's posterior uncertainty naturally increases in areas with fewer samples. This is illustrated in Figure~\ref{fig:ablation}(f-j). The top-right region, unobserved in the initial demos, is correctly identified as highly uncertain by the GPC (i), while the MLP (h) remains confident. As stated earlier, the GPC also gives us the epistemic uncertainty (j) directly, unlike other methods, where computationally expensive approximation techniques like Deep Ensembles or Monte Carlo Dropout have to be used.
+    
+    Consequently, our active learning strategy directs the expert to provide new demonstrations in these informative, unexplored areas. This mechanism makes the learning process robust to sub-optimal initial demonstrations and leads to superior final performance, validating our choice of the GPC for this work. 
+    
+\section{Feature Selection}
+
+Here, we argue that relying solely on MI for efficient feature reduction is insufficient. The first challenge lies in engineering a candidate set of task-relevant relative features from the high-dimensional raw observations. However, even if such a set is successfully generated, selecting the optimal features using purely data-driven metrics is hard in few-shot regimes: there is an inability to distinguish between causal geometry and spurious environmental correlations. For example, in the restocking task, replacing the relative angle between the end-effector and the bottle with the absolute angle yielded nearly identical MI scores. This demonstrates that MI alone cannot filter out spatially dependent features. Therefore, the LLM is necessary to enforce spatial invariance prior to mathematical verification.
+
+The following sequence provides an end-to-end demonstration of the SEAL feature engineering pipeline. It illustrates how the MI estimator safely rejects an underspecified human prompt, and how the subsequent automated ablation mathematically prunes the corrected feature set into a minimal subspace.
+
+\subsubsection{Phase 1: Initial Prompt}
+An operator initially provides an underspecified prompt that omits the geometric constraint of the bottle starting inside the basket.
+
+\vspace{0.5em}
+\noindent\fbox{%
+\parbox{0.97\columnwidth}{%
+\textbf{Initial Task Description:} "The objective is to restock the bottle onto the shelf. The robot must first establish a top grasp to lift the carton, place it on the table, transition to a side grasp, and finally place it on the shelf."
+}%
+}
+\vspace{0.5em}
+
+Note that the operator fails to specify that the initial top grasp is necessary because the bottle is initially inside the basket. Based on this, the LLM  incorrectly—generates feature set consisting of four variables: \textit{is\_grasped}, \textit{relative\_alignment}, \textit{z\_dist\_table}, and \textit{z\_dist\_shelf}. 
+
+When evaluated against the raw demonstration data, this proposed matrix $X_{\text{sel}}$ yields a Joint MI of only \textbf{1.1036 nats}. Because this falls significantly below the joint MI of the raw data ($MI(X_{\text{raw}},Y) \approx 1.2737$ nats), the verification layer intercepts the output, rejects the feature set, and halts execution to ask the user for a more descriptive prompt.
+
+\subsubsection{Phase 2: Prompt Correction}
+The operator corrects the prompt by explicitly introducing the physical bottleneck:
+
+\vspace{0.5em}
+\noindent\fbox{%
+\parbox{0.97\columnwidth}{%
+\textbf{Refined Task Description:} "This is a restocking task. The objective is to move the carton from the basket to the shelf. When the carton is inside the basket, the robot can only grasp it from the top. If the carton is grasped from the top, the robot must place it on the table and regrasp it from the side before placing it on the tight shelf."
+}%
+}
+\vspace{0.5em}
+
+The LLM processes this constraint and outputs a spatially invariant, relative feature set:
+\begin{itemize}
+    \item $d_{\text{basket}}$: Distance between carton and basket.
+    \item $is_{\text{held}}$: Gripper state boolean.
+    \item $\theta_{\text{rel}}$: Relative alignment angle between end-effector and carton.
+    \item $h_{\text{carton}}$: Absolute height of the carton.
+\end{itemize}
+
+This refined $4\text{D}$ set yields a Joint MI of \textbf{1.2704 nats}, matching the baseline entropy. The system accepts $F_{\text{sel}}$ and automatically proceeds to the minimization stage.
+
+\subsubsection{Phase 3: Mathematical Minimization}
+To remove redundant features if any, the system evaluates lower-dimensional projections by systematically dropping one feature at a time and recalculating the Joint MI:
+
+\vspace{0.5em}
+\noindent
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}llc@{}}
+\toprule
+\textbf{Feature Set} & \textbf{MI (nats)} & \textbf{Information Loss ($\Delta$)} \\ \midrule
+Full 4D Set (Baseline)         & 1.2704                   & -                         \\ \midrule
+Drop 1: No $d_{\text{basket}}$    & 1.1036                   & $-0.1668$ (Critical) \\
+Drop 2: No $is_{\text{held}}$  & 1.1429                   & $-0.1275$ (Critical) \\
+Drop 3: No $\theta_{\text{rel}}$ & 1.2399                   & $-0.0305$ (Critical) \\
+Drop 4: No $h_{\text{carton}}$ & \textbf{1.2706}          & \textbf{$+0.0002$ (Redundant)} \\ \bottomrule
+\end{tabular}%
+}
+\vspace{0.5em}
+
+The ablation mathematically proves that omitting the absolute coordinate $h_{\text{carton}}$ results in zero information loss. The system correctly identifies it as redundant and discards it. The pipeline concludes by finalizing the causally robust, $3\text{D}$ minimal state space: $F_{\text{min}} = [d_{\text{basket}}, is_{\text{held}}, \theta_{\text{rel}}]$, readying the system for the active learning loop.
+
+\bibliographystyle{/Users/ravi-imac/Library/CloudStorage/OneDrive-IndianInstituteofScience/Overleaf/SEAL/bib/IEEEtran}
+
+\bibliography{/Users/ravi-imac/Library/CloudStorage/OneDrive-IndianInstituteofScience/Overleaf/SEAL/bib/example}
+\end{document}
