@@ -61,181 +61,13 @@ Learning from Demonstration, Hybrid Control, Task-Level Failure Recovery, Active
 
 \begin{figure}[t!]
 \centering
-% New positioning figure: the task automaton is SHARED; only how the localization
-% function L is obtained differs across TLI (hand-designed), GLiDE (learned via
-% perturb+reset+oracle), and SEAL (learned from safe segmented demos).
-\resizebox{\columnwidth}{!}{%
-\begin{tikzpicture}[>=Latex, font=\small,
-  mode/.style={circle, draw, thick, minimum size=7.5mm, inner sep=0pt},
-]
-% ---------- Top: the shared, designed automaton ----------
-\node[mode] (a) {$a$};
-\node[mode, right=12mm of a] (b) {$b$};
-\node[mode, right=12mm of b] (c) {$c$};
-\node[mode, right=12mm of c, double, double distance=1pt] (d) {$d$};
-\node[above=0pt of a, font=\scriptsize] {Scoop};
-\node[above=0pt of b, font=\scriptsize] {Transport};
-\node[above=0pt of c, font=\scriptsize] {Deposit};
-\node[above=0pt of d, font=\scriptsize] {Done};
-\draw[->,thick] (a) -- (b);
-\draw[->,thick] (b) -- (c);
-\draw[->,thick] (c) -- (d);
-\draw[->, thick, red] (b) to[bend left=48] node[below=0.5pt, midway, font=\tiny, red] {recovery} (a);
-\begin{scope}[on background layer]
-  \node[draw, dashed, rounded corners, inner xsep=4.5mm, inner ysep=6mm, fit=(a)(b)(c)(d)] (auto) {};
-\end{scope}
-\node[anchor=west, font=\bfseries\small] at ([yshift=1mm]auto.north west)
-  {Designed task automaton \normalfont(shared by all three methods)};
-\node[font=\scriptsize\itshape, below=0.5mm of auto.south]
-  {reactivity $=$ localizing the state onto the correct mode: where is the guard?};
-
-% ---------- Bottom: the SAME guard, obtained three ways ----------
-% Panel geometry: width 3.5, height 2.7. True guard: load falls as tilt grows.
-% Macro-ish: draw each panel in a shifted scope.
-%
-% ---- Panel 1: TLI (hand-placed thresholds, no data) ----
-\begin{scope}[shift={(-1.35,-4.6)}]
-  \draw[->] (0,0) -- (3.5,0) node[below left, font=\tiny] {tilt $\theta$};
-  \draw[->] (0,0) -- (0,2.7) node[rotate=90, anchor=south east, font=\tiny] {load $F$};
-  % true boundary (unknown to the designer)
-  \draw[gray!70, thick, dashed]
-    (0.25,2.15) .. controls (1.4,1.95) and (2.1,1.15) .. (3.2,0.55);
-  \node[gray!70, font=\tiny, anchor=west] at (0.30,2.38) {true guard};
-  % hand-placed axis-aligned thresholds
-  \draw[tli, very thick] (1.6,0) -- (1.6,1.0) -- (3.3,1.0);
-  \node[tli, font=\tiny, anchor=west] at (1.62,0.32) {$\theta\!>\!20^{\circ}$};
-  \node[tli, font=\tiny, anchor=south west] at (2.35,1.02) {$F\!<\!0.5$N};
-  % mismatch region
-  \begin{scope}[on background layer]
-    \fill[red!14] (1.6,1.0) -- (1.6,1.83) .. controls (2.0,1.5) and (2.4,1.2)
-      .. (2.75,1.0) -- cycle;
-  \end{scope}
-  \node[red!70, font=\tiny, anchor=west] at (2.15,1.95) {mismatch:};
-  \node[red!70, font=\tiny, anchor=west] at (2.15,1.70) {missed failures};
-  % region labels: above the guard rice is retained, below it is lost
-  \node[gray, font=\tiny\itshape, anchor=west] at (2.30,2.45) {$R_{\text{transport}}$: rice on};
-  \node[gray, font=\tiny\itshape] at (0.85,0.40) {rice lost $\to$ Scoop};
-  \node[font=\scriptsize\bfseries, tli, anchor=north] at (1.75,-0.42) {\faDraftingCompass~TLI: hand-placed};
-  \node[font=\tiny, tli, anchor=north] at (1.75,-0.82) {no data consulted};
-\end{scope}
-%
-% ---- Panel 2: GLiDE (fit to induced failures) ----
-\begin{scope}[shift={(3.05,-4.6)}]
-  \draw[->] (0,0) -- (3.5,0) node[below left, font=\tiny] {tilt $\theta$};
-  \draw[->] (0,0) -- (0,2.7);
-  % failure cloud (below/right of true boundary)
-  \foreach \p in {(1.9,0.6),(2.3,0.85),(2.7,0.5),(2.5,1.0),(3.0,0.75),(2.1,0.35),
-                  (2.85,0.32),(1.75,0.95),(2.45,0.6),(3.1,1.0),(2.05,1.12),(2.65,1.28)}
-    \node[red!75, font=\tiny] at \p {$\times$};
-  % success cloud (above/left)
-  \foreach \p in {(0.5,1.7),(0.9,2.1),(1.3,1.75),(0.6,2.35),(1.6,1.6),(1.05,1.45),
-                  (1.5,2.2),(0.35,1.35),(1.85,1.75),(0.85,1.75)}
-    \fill[glide] \p circle (1.3pt);
-  % fitted boundary hugs the truth
-  \draw[glide, very thick]
-    (0.25,2.15) .. controls (1.4,1.95) and (2.1,1.15) .. (3.2,0.55);
-  % region labels + oracle legend
-  \node[gray, font=\tiny\itshape, anchor=west] at (2.30,2.45) {rice on};
-  \node[gray, font=\tiny\itshape] at (0.85,0.40) {rice lost};
-  \node[glide, font=\tiny, anchor=west] at (0.15,0.15)
-    {$\bullet$ valid\ \ \textcolor{red!75}{$\times$} invalid transition (oracle)};
-  \node[font=\scriptsize\bfseries, glide, anchor=north] at (1.75,-0.42) {\faExclamationTriangle~GLiDE: fit to failure};
-  \node[font=\tiny, glide, anchor=north] at (1.75,-0.82) {$1000$s of spills \faRedo\ resets + oracle};
-\end{scope}
-%
-% ---- Panel 3: SEAL (fit to success only) ----
-\begin{scope}[shift={(7.45,-4.6)}]
-  \draw[->] (0,0) -- (3.5,0) node[below left, font=\tiny] {tilt $\theta$};
-  \draw[->] (0,0) -- (0,2.7);
-  % a few safe demonstration trajectories (stay on the safe side of the guard)
-  \draw[seal!70, thick] (0.35,2.45) .. controls (1.0,2.5) and (1.5,2.15) .. (1.9,1.70);
-  \draw[seal!70, thick] (0.5,2.25) .. controls (1.2,2.30) and (1.7,1.85) .. (2.2,1.45);
-  \draw[seal!70, thick] (0.6,2.60) .. controls (1.5,2.55) and (2.0,1.85) .. (2.5,1.35);
-  % query points proposed by the GPC at its most uncertain guard states
-  \foreach \p in {(2.9,0.82),(2.55,1.08),(3.05,0.74)}{
-    \fill[seal] \p circle (1.5pt);
-    \draw[seal] \p circle (3.0pt);
-  }
-  \node[seal, font=\tiny, anchor=south west] at (2.55,1.55) {queries};
-  % newly requested SAFE demos passing through the queried states (dashed)
-  \draw[seal!70, thick, dashed] (2.05,1.65) .. controls (2.35,1.30) .. (2.55,1.08)
-    .. controls (2.75,0.90) .. (3.05,0.74);
-  \draw[seal!70, thick, dashed] (2.45,1.45) .. controls (2.70,1.10) .. (2.9,0.82)
-    .. controls (3.00,0.73) .. (3.12,0.66);
-  % region labels
-  \node[gray, font=\tiny\itshape, anchor=east] at (3.35,2.20) {rice on};
-  \node[gray, font=\tiny\itshape] at (0.85,0.40) {rice lost};
-  % fitted boundary hugs the truth
-  \draw[seal, very thick]
-    (0.25,2.15) .. controls (1.4,1.95) and (2.1,1.15) .. (3.2,0.55);
-  \node[font=\scriptsize\bfseries, seal, anchor=north] at (1.75,-0.42) {\faIcon{shield-alt}~SEAL: fit to success};
-  \node[font=\tiny, seal, anchor=north] at (1.75,-0.82) {few safe demos + targeted queries};
-\end{scope}
-%
-% connective tissue: all three feed the same L
-\node[font=\scriptsize\itshape] at (4.8,-6.9)
-  {three ways to obtain the same object: the localization function $L:\ \mathcal{X}_{\min}\!\to\!\mathcal{M}$};
-\end{tikzpicture}%
-}
+\input{Figures/tikz/fig1_positioning}
 \caption{\textbf{One automaton, one guard, three ways to find it.} \emph{Top:} all methods share the same designed automaton for scooping; reactivity reduces to knowing where the \emph{guard} lies in feature space (spoon tilt $\theta$ vs.\ load $F$). In each bottom panel the dark curve is that guard, separating \textit{Transport} still valid (rice on) from physically failed (rice lost $\to$ re-localize to \textit{Scoop}). TLI~\cite{wang2022temporal} places it by hand: where the analytic rule and the true boundary disagree (shaded), failures go undetected and no data corrects it. GLiDE~\cite{wang2024grounding} fits it to perturbed rollouts labeled by an outcome oracle---accurate, but at the cost of thousands of induced failures and resets. SEAL fits it from a few safe demonstrations (solid) plus safe demonstrations queried at its most uncertain states (circled, dashed)---no failure is ever induced.}
 \label{fig:seal_ltl_comp}
 \end{figure}
 \begin{figure*}[t!]
 \centering
-% TikZ scaffold + photo frames. Photos in Figures/intro_frames/ are LOW-RES CROPS of
-% the old simple.png -- replace each file with the original high-res photo (same
-% filename) and the figure updates automatically.
-\resizebox{\textwidth}{!}{%
-\begin{tikzpicture}[font=\small,
-  photo/.style={inner sep=0pt, outer sep=0pt},
-  quote/.style={font=\scriptsize\itshape, text depth=0pt},
-  banner/.style={font=\small\bfseries, anchor=west},
-]
-% ---------- (1) Teach ----------
-\node[photo] (t1) {\includegraphics[width=3.1cm]{Figures/intro_frames/teach1.png}};
-\node[photo, right=1.5mm of t1] (t2) {\includegraphics[width=3.1cm]{Figures/intro_frames/teach2.png}};
-\node[photo, right=1.5mm of t2] (t3) {\includegraphics[width=3.1cm]{Figures/intro_frames/teach3.png}};
-\node[photo, right=1.5mm of t3] (t4) {\includegraphics[width=3.1cm]{Figures/intro_frames/teach4.png}};
-\node[quote, below=0.5mm of t1] {``grasping from top''};
-\node[quote, below=0.5mm of t2] {``placing on table''};
-\node[quote, below=0.5mm of t3] {``grasping from side''};
-\node[quote, below=0.5mm of t4] {``placing on shelf''};
-\node[banner, tli] at ([xshift=-1mm,yshift=3.5mm]t1.north west)
-  {\faUser~1.\ Expert teaches: narrated, segmented demonstrations};
-\begin{scope}[on background layer]
-  \node[fill=teachbg, rounded corners, inner sep=2.5mm,
-        fit=(t1)(t4), yshift=-1mm, minimum height=2.6cm] (teachbox) {};
-\end{scope}
-% ---------- (2) Query ----------
-\node[photo, below=13mm of t1.south west, anchor=north west] (q1a)
-  {\includegraphics[width=2.75cm]{Figures/intro_frames/query1a.png}};
-\node[photo, right=4mm of q1a] (q1b) {\includegraphics[width=2.75cm]{Figures/intro_frames/query1b.png}};
-\node[photo, right=7mm of q1b] (q2a) {\includegraphics[width=2.75cm]{Figures/intro_frames/query2a.png}};
-\node[photo, right=4mm of q2a] (q2b) {\includegraphics[width=2.75cm]{Figures/intro_frames/query2b.png}};
-\draw[->, thick] (q1a) -- (q1b);
-\draw[->, thick] (q2a) -- (q2b);
-\node[quote, below=0.5mm of q1b.south west, anchor=north] at ([xshift=-3mm]q1b.south west|-q1b.south)
-  {};
-\node[quote] at ([yshift=-2.5mm]$(q1a.south)!0.5!(q1b.south)$) {\faUser~``I would grasp from top''};
-\node[quote] at ([yshift=-2.5mm]$(q2a.south)!0.5!(q2b.south)$) {\faUser~``I would grasp from side''};
-\node[banner, tli] at ([xshift=-1mm,yshift=3.5mm]q1a.north west)
-  {\faRobot~2.\ Robot queries the situations it is uncertain about};
-\begin{scope}[on background layer]
-  \node[fill=querybg, rounded corners, inner sep=2.5mm,
-        fit=(q1a)(q2b), yshift=-1mm, minimum height=2.6cm] (querybox) {};
-\end{scope}
-% ---------- (3) Test ----------
-\node[photo, right=8mm of t4.north east, anchor=north west, yshift=-9mm] (test)
-  {\includegraphics[width=4.1cm]{Figures/intro_frames/test.png}};
-\node[banner, tli, text width=4.1cm, align=left] at ([xshift=-1mm,yshift=6mm]test.north west)
-  {\faBolt~3.\ Test: perturbation};
-\node[font=\scriptsize, align=center, below=1.5mm of test]
-  (testtxt) {bottle knocked over $\rightarrow$ localizer\\ detects mode change $\rightarrow$\\ ``grasp from side'' engaged\\ \textbf{failure avoided}};
-\begin{scope}[on background layer]
-  \node[fill=testbg, rounded corners, inner sep=2.5mm, fit=(test)(testtxt)] {};
-\end{scope}
-\end{tikzpicture}%
-}
+\input{Figures/tikz/fig2_storyboard}
 \caption{\textbf{Teaching, querying, and recovery on the restocking task.} (1) The expert demonstrates the full task, marking each subtask with a trigger signal while narrating. (2) The trained classifier identifies the physical situations where its guard estimate is most uncertain and asks the expert what mode should be executed from them; the answers are short, safe sub-demonstrations. (3) At test time the memory-less localizer detects a perturbation-induced mode change from the instantaneous state and engages the appropriate skill.}
 \label{fig:intro}
 \end{figure*}
@@ -348,56 +180,7 @@ SEAL executes the program laid out by Sec.~\ref{sec:formulation}: construct a fe
 
 \begin{figure*}[t]
 \centering
-% TikZ scaffold; thumbnails in Figures/framework_frames/ are LOW-RES CROPS of the
-% old framework.png -- regenerate from the original matplotlib outputs (same
-% filenames) for print quality. Prompt-template text moved to Appendix~B.
-\resizebox{\textwidth}{!}{%
-\begin{tikzpicture}[font=\small, >=Latex,
-  photo/.style={inner sep=1pt, draw=gray!40, thin},
-  blk/.style={rounded corners, draw, thick, align=center, inner sep=3pt,
-              minimum height=8mm, font=\small},
-  lbl/.style={font=\scriptsize, align=center},
-  panel/.style={font=\small\bfseries, anchor=west},
-]
-% =============== (a) feature engineering (top) ===============
-\node[blk, text width=24mm] (prompt)
-  {task prompt\\ \scriptsize(Appendix~\ref{app:feature})};
-\node[blk, right=8mm of prompt] (llm) {LLM};
-\node[blk, right=8mm of llm, text width=22mm] (fsel) {candidate\\ features $F_{\text{sel}}$};
-\node[blk, right=8mm of fsel, text width=30mm] (mi)
-  {sufficiency check\\ $I(X_{\text{sel}};Y)\ge(1-\epsilon)I(X_{\text{raw}};Y)$};
-\node[blk, right=8mm of mi, text width=26mm] (minz)
-  {MI minimization:\\ drop redundant\\ features};
-\node[blk, right=8mm of minz, fill=teachbg, text width=20mm] (fmin)
-  {$F_{\min}$, $\mathcal{X}_{\min}$\\ \scriptsize fixed for all rounds};
-\draw[->, thick] (prompt) -- (llm);
-\draw[->, thick] (llm) -- (fsel);
-\draw[->, thick] (fsel) -- (mi);
-\draw[->, thick] (mi) -- node[above, font=\scriptsize]{pass} (minz);
-\draw[->, thick] (minz) -- (fmin);
-\draw[->, thick, dashed] (mi.south) -- ++(0,-4.5mm) -| node[below, pos=0.25, font=\scriptsize]
-  {fail: user refines task description} (prompt.south);
-\node[panel] at ([xshift=-2mm,yshift=4mm]prompt.north west)
-  {(a) Two-stage feature engineering = observability certificate for Assumption~\ref{as:obs} (Sec.~\ref{sec:feature_engineering})};
-% =============== (b) active learning loop (bottom) ===============
-\node[photo, below=17mm of prompt.south west, anchor=north west] (demos) {\includegraphics[height=2.1cm]{Figures/framework_frames/demos.png}};
-\node[photo, right=13mm of demos] (weak) {\includegraphics[height=2.1cm]{Figures/framework_frames/weak.png}};
-\node[photo, right=13mm of weak] (uncert) {\includegraphics[height=2.1cm]{Figures/framework_frames/uncert.png}};
-\node[photo, right=13mm of uncert] (queried) {\includegraphics[height=1.35cm]{Figures/framework_frames/queried.png}};
-\node[photo, right=13mm of queried] (strong) {\includegraphics[height=2.1cm]{Figures/framework_frames/strong.png}};
-\node[lbl, below=1mm of demos]  {initial segmented\\ demos $\mathcal{D}_0$};
-\node[lbl, below=1mm of weak]   {weak classifier};
-\node[lbl, below=1mm of uncert] {acquisition $\alpha$,\\ query points $X_K$};
-\node[lbl, below=1mm of queried]{safe demos through $X_K$};
-\node[lbl, below=1mm of strong] {strong classifier $f$};
-\draw[->, thick] (demos) -- node[above, font=\scriptsize]{train} (weak);
-\draw[->, thick] (weak) -- (uncert);
-\draw[->, thick] (uncert) -- node[above, font=\scriptsize]{\faUser} (queried);
-\draw[->, thick] (queried) -- node[above, font=\scriptsize]{retrain} (strong);
-\node[panel] at ([xshift=-2mm,yshift=5mm]demos.north west)
-  {(b) Active learning of the localizer (Algorithm~\ref{alg:active})};
-\end{tikzpicture}%
-}
+\input{Figures/tikz/fig3_pipeline}
 \caption{\textbf{The SEAL pipeline.} (a) An LLM proposes candidate features from the task description; a mutual-information sufficiency check accepts them only if no mode-relevant information was discarded (else the user refines the description), and a minimization pass drops redundant features. The resulting $F_{\min}$ is fixed for all subsequent rounds and at test time. (b) In $F_{\min}$, the initial segmented demonstrations train a weak localizer; the acquisition score selects the states where the guard estimate is least certain, the expert supplies safe demonstrations through them, and retraining yields the deployed localizer $f$ (thumbnails: 2D navigation task of Sec.~\ref{sec:2d_nav}).}
 \label{fig:framework}
 \end{figure*}
@@ -515,35 +298,26 @@ Restocking & FR3 + users & $10$ users & unguided demos & Q4 \\
 \end{table}
 
 \begin{figure*}[t]
-    \centering
-    \includegraphics[width=\textwidth]{Figures/2d_nav_figure.png}
-    \caption{\textbf{2D Navigation:} (a) the learned GPC boundaries match the ground truth; (b) a perturbation (orange) and the robot recovering (red) by following the correct mode sequence.}
-    \label{fig:2d_recovery}
+\centering
+\input{Figures/tikz/fig4_nav2d}
+\caption{\textbf{2D navigation on hardware (FR3).} (a) Guards learned from 6+6 demonstrations match the ground-truth mode regions; in this task feature space \emph{is} the workspace, so the guards of Fig.~\ref{fig:seal_ltl_comp} are directly visible. (b) A perturbation drives the state across a non-nominal boundary and the localizer re-engages the correct mode. (c) The perturbation induces an invalid transition; the red segment shows the recovery re-traversal completing the prescribed sequence.}
+\label{fig:2d_recovery}
 \end{figure*}
 
 \subsection{2D Navigation (Simulation and Hardware)}
 \label{sec:2d_nav}
-% TODO(fig-consistency): make Fig.~\ref{fig:2d_recovery}/\ref{fig:comparison} visually
-% seamless with Fig.~\ref{fig:seal_ltl_comp}, so the reader recognizes the 2D task as
-% the "literal" instance of the Fig.~1 story:
-%   1. Same visual language: guard curves in the seal green (dark, thick), initial safe
-%      demos as solid seal!70 curves, queried states as filled dot + outer circle,
-%      queried sub-demos as dashed seal!70 curves; GLiDE comparisons in the glide
-%      orange with red x for oracle-labeled failures.
-%   2. Panel (a) caption should say "guards" (the Fig.~1 term), not just "boundaries",
-%      and note that here feature space = the physical workspace, so the guards of
-%      Fig.~1 are literally visible.
-%   3. Show the perturbation/recovery episode with the same red arrow + "recovery"
-%      label styling as the automaton in Fig.~1.
-%   4. If the figure is regenerated (matplotlib), pull colors from the paper palette:
-%      seal RGB(0,140,90), glide RGB(200,120,0), tli RGB(80,80,80).
+% TODO(fig-consistency): captions/labels now use Fig.-1 language; remaining step is
+% regenerating the raster panels (exp_frames/nav_*, cmp_*) from matplotlib with the
+% paper palette: seal RGB(0,140,90), glide RGB(200,120,0), tli RGB(80,80,80), and the
+% Fig.-1 markers (solid demos, circled queries, dashed queried sub-demos).
 Replicated from GLiDE, the task is to traverse colored 2D regions in a prescribed order (Fig.~\ref{fig:comparison}a); here $F_{\min}$ is simply the $(x,y)$ coordinate. We request 6 demonstrations from mode~1 to mode~4 from varied starts, train an initial classifier, select 6 uncertain points, request 6 sub-demonstrations through them, and retrain on the combined 12. As boundary accuracy matters more than labeling the entire space here, we use margin uncertainty. We compare against GLiDE seeded with the same 6 demonstrations and its simulated perturbations.
 
 Fig.~\ref{fig:comparison} shows that SEAL after active querying (b) closely matches the ground truth (a), and clearly improves on the pre-query classifier (c), demonstrating the value of active learning. Table~\ref{tab:miou_results} reports mean Intersection-over-Union (mIoU) against ground truth: SEAL matches GLiDE with 1000 perturbations, while GLiDE degrades sharply as its perturbation budget shrinks. We emphasize the correct accounting of effort (Q1): GLiDE's perturbations are cheap in simulation but require an outcome oracle and resets, whereas SEAL's additional cost is 6 human sub-demonstrations and no oracle; the comparison is thus of \emph{human effort and safety}, not raw sample count. Crucially, SEAL never accesses ground-truth labels during training, unlike GLiDE's success oracle. We do not claim to surpass GLiDE, which solves the harder problem of learning from sparse success/failure feedback; we show we can match it with a little more human effort and none of the oracle, perturbation, or reset machinery. \todoexp{random-query baseline (TODO.md A2): rerun with the 6 query points drawn uniformly at random at equal budget, add row to Table~\ref{tab:miou_results}, to isolate the value of uncertainty-targeted selection from that of extra data} \todoexp{sequence-aware baseline (TODO.md A3): HMM/windowed localizer trained on the same demos, measure miss rate/latency on perturbation-induced mode changes, to empirically back the memoryless design argument}
 
 \begin{figure}[htbp]
-\centerline{\includegraphics[width=0.5\textwidth]{Figures/comparison_GLiDE.png}}
-\caption{Classification performance across methods. (a) ground-truth mode regions; (b) SEAL with 6+6 demonstrations; (c) SEAL without the active round (6 demonstrations); (d) GLiDE with 6 demonstrations + 1000 perturbed rollouts.}
+\centering
+\input{Figures/tikz/fig5_comparison2d}
+\caption{\textbf{Learned mode regions on 2D navigation.} SEAL with one active round (b) recovers the ground-truth partition (a) as accurately as GLiDE with 1000 oracle-labeled rollouts (d), and markedly better than without the active round (c).}
 \label{fig:comparison}
 \end{figure}
 
@@ -567,26 +341,27 @@ Fig.~\ref{fig:comparison} shows that SEAL after active querying (b) closely matc
 We replicate the task on a Franka FR3 7-DOF arm with 6+6 demonstrations; Fig.~\ref{fig:2d_recovery} shows the learned guards matching the ground-truth regions on hardware and a full perturbation--recovery episode, in which the localizer re-localizes the perturbed state and completes the prescribed sequence. \textbf{Empirical certificate (Q3).} We define the Level-1 certificate per rollout: an \emph{invariance violation} occurs if the feature trajectory exits $R_m$ through any boundary other than the nominal guard $G_{m,m'}$ (Definition~\ref{def:inv}), and \emph{reachability success} if it enters $G_{m,m'}$; rates are aggregated over unperturbed rollouts per mode. On this task we also evaluate the invariance/reachability-augmented acquisition of Sec.~\ref{sec:active}: \todo{report invariance-violation and reachability-success rates before vs.\ after guard-refinement queries}.
 
 \subsection{Wiping}
-This task evaluates reactive recovery in a continuous, contact-rich setting. A Franka FR3 with an eraser must clean a marker line across three modes---\textit{approach\_align}, \textit{wipe}, \textit{done}---and SEAL trains a supervisor from only 2 demonstrations. Random external forces break contact or displace the end-effector. The open-loop policy fails under perturbation, whereas the SEAL-supervised policy continues to the \textit{done} state, substantially improving the wiped fraction (Fig.~\ref{fig:robosuite_wiping}). Recovery emerges from localization: path displacement re-localizes \textit{wipe}$\to$\textit{approach\_align}, and incomplete cleaning re-localizes \textit{done}$\to$\textit{approach\_align}.
+This task evaluates reactive recovery in a continuous, contact-rich setting (Fig.~\ref{fig:compilation}b). A Franka FR3 with an eraser must clean a marker line across three modes---\textit{approach\_align}, \textit{wipe}, \textit{done}---and SEAL trains a supervisor from only 2 demonstrations. Random external forces break contact or displace the end-effector. The open-loop policy fails under perturbation, whereas the SEAL-supervised policy continues to the \textit{done} state, substantially improving the wiped fraction (Fig.~\ref{fig:robosuite_wiping}). Recovery emerges from localization: path displacement re-localizes \textit{wipe}$\to$\textit{approach\_align}, and incomplete cleaning re-localizes \textit{done}$\to$\textit{approach\_align}.
 
 \begin{figure*}[t]
-    \centering
-    \includegraphics[width=\textwidth]{Figures/compilation.png}
-    \caption{\textbf{Experimental setups:} Robosuite Stack (a), Wiping (b), Scooping (c), and Pick-and-Place (d).}
-    \label{fig:compilation}
+\centering
+\input{Figures/tikz/fig6_setups}
+\caption{\textbf{Experimental setups} for the four manipulation tasks; the 2D navigation setup is shown in Fig.~\ref{fig:2d_recovery}.}
+\label{fig:compilation}
 \end{figure*}
 
 \begin{figure}[htbp]
-\centerline{\includegraphics[width=0.5\textwidth]{Figures/robosuite_wiping.png}}
-\caption{\textbf{SEAL supervision vs.\ open-loop policies on the Robosuite tasks (Wiping, Lift, Stack):} supervision causes no degradation without perturbations (light) and improves performance substantially under perturbations (dark).}
+\centering
+\input{Figures/tikz/fig7_robosuite_bars}
+\caption{\textbf{SEAL supervision vs.\ open-loop policies on the Robosuite tasks:} supervision causes no degradation without perturbations (light bars) and substantially mitigates degradation under perturbations (dark bars).}
 \label{fig:robosuite_wiping}
 \end{figure}
 
 \begin{figure*}[t]
-    \centering
-    \includegraphics[width=\textwidth]{Figures/stacking_pnp.png}
-    \caption{\textbf{Comparison with tuned automata.} In Scooping, confidence-gated transitions reduce false positives, yielding faster completion and shorter paths across thresholds. In Stacking, SEAL improves all efficiency metrics under both nominal and perturbed conditions. (Lower is better in all plots.)}
-    \label{fig:scooping_pnp}
+\centering
+\input{Figures/tikz/fig8_automata_cmp}
+\caption{\textbf{Comparison with tuned automata.} Scooping (A--D): confidence-gated transitions eliminate false positives as the transition threshold shrinks, yielding fewer spurious transitions, shorter paths, and faster completion. Pick-and-place (E--H): SEAL improves all efficiency metrics under both nominal and perturbed conditions.}
+\label{fig:scooping_pnp}
 \end{figure*}
 
 \subsection{Block Lifting and Stacking (Robosuite)}
@@ -594,14 +369,14 @@ We test non-monotonic features in the Lift and Stack environments~\cite{robosuit
 
 \subsection{Scooping}
 \label{sec:scooping}
-We adopt GLiDE's scooping task: scoop, transport, and deposit rice from a bowl to a plate using a spoon on the end-effector. Open-loop execution fails at the task level if rice spills during transport or scooping fails---a case where failure demonstrations are hard to reset and self-supervised data collection is infeasible, so GLiDE cannot be run here. We detect grains on the spoon with a wrist camera (a binary feature) and use relative end-effector-to-bowl and -plate positions, training with 4 demonstrations.
+We adopt GLiDE's scooping task (Fig.~\ref{fig:compilation}c): scoop, transport, and deposit rice from a bowl to a plate using a spoon on the end-effector. Open-loop execution fails at the task level if rice spills during transport or scooping fails---a case where failure demonstrations are hard to reset and self-supervised data collection is infeasible, so GLiDE cannot be run here. We detect grains on the spoon with a wrist camera (a binary feature) and use relative end-effector-to-bowl and -plate positions, training with 4 demonstrations.
 
 Beyond comparison to open-loop, we ask how SEAL compares to a tuned automaton with expert-set thresholds---effectively an ideal, hand-built localizer that a learned classifier can only approximate but that is far harder to construct. We design and tune such an automaton on the same features. Because feature and prediction noise is unavoidable, especially near boundaries, \emph{all} classifiers---designed or learned---must confirm a switch over a small buffer to avoid false positives, trading latency against robustness. SEAL breaks this trade (Q2): with access to prediction confidence, it keeps a very small dwell and instead rejects low-confidence switches, smoothing boundary jitter; a genuine perturbation pushes the state deep into another region where confidence is high, giving a fast response. Thus SEAL attains low latency and low false-positive rate simultaneously. Note this reconciles the two roles of the automaton in our narrative: it is an accurate localizer, yet brittle to observation noise precisely because it lacks a calibrated confidence to gate on.
 
-Over 24 trials spanning perturbation levels and transition thresholds (none inducing true task failure; these test observation-noise robustness), both policies achieve 100\% eventual completion---consistent with the learned localizer faithfully approximating the automaton; the per-mode certificate of Q3 (invariance-violation and reachability-success rates, as defined in Sec.~\ref{sec:2d_nav}) is reported separately: \todo{Level-1 certificate rates on scooping}. However, as the threshold shrinks, SEAL incurs no false-positive transitions while the automaton's rise (Fig.~\ref{fig:scooping_pnp}b), giving the automaton significantly higher completion times (d) and longer paths (c). As with any learned model, SEAL's accuracy depends on demonstration quality; a classifier trained on poor data cannot outperform a tuned automaton even with confidence gating. \todoexp{OOD-detector baseline (TODO.md A1): GMM--Mahalanobis detector (Eiband-style) trained on the same safe demos, evaluated on these perturbation episodes; report detection/false-positive rates next to SEAL's to substantiate the Related Work claim that time-conditioned OOD detectors do not transfer under spatial perturbation}
+Over 24 trials spanning perturbation levels and transition thresholds (none inducing true task failure; these test observation-noise robustness), both policies achieve 100\% eventual completion---consistent with the learned localizer faithfully approximating the automaton; the per-mode certificate of Q3 (invariance-violation and reachability-success rates, as defined in Sec.~\ref{sec:2d_nav}) is reported separately: \todo{Level-1 certificate rates on scooping}. However, as the threshold shrinks, SEAL incurs no false-positive transitions while the automaton's rise (Fig.~\ref{fig:scooping_pnp}B), giving the automaton significantly higher completion times (Fig.~\ref{fig:scooping_pnp}D) and longer paths (Fig.~\ref{fig:scooping_pnp}C). As with any learned model, SEAL's accuracy depends on demonstration quality; a classifier trained on poor data cannot outperform a tuned automaton even with confidence gating. \todoexp{OOD-detector baseline (TODO.md A1): GMM--Mahalanobis detector (Eiband-style) trained on the same safe demos, evaluated on these perturbation episodes; report detection/false-positive rates next to SEAL's to substantiate the Related Work claim that time-conditioned OOD detectors do not transfer under spatial perturbation}
 
 \subsection{Pick and Place}
-The robot picks a box and places it near a target, both tracked with AprilTags~\cite{7759617} and a RealSense D435i. With gripper pick-and-place motions the base success rate is lower and failure demonstrations (object falling from the gripper) are potentially unsafe. We divide the task into \textit{Pick}, \textit{Transport}, \textit{Place}, and \textit{Retreat}, each with an object-conditioned primitive, and train from 2 demonstrations using relative distances and a binary gripper state. Over 42 trials with perturbations---moving objects during execution, inducing grasp failures and incorrect placements, and pulling the box from the gripper mid-transport---all efficiency metrics (completion time, path length) are again worse for the tuned automaton than for SEAL, though by a smaller margin than in scooping. Here we fix the transition threshold and instead vary start and goal positions to test generalization.
+The robot picks a box and places it near a target (Fig.~\ref{fig:compilation}d), both tracked with AprilTags~\cite{7759617} and a RealSense D435i. With gripper pick-and-place motions the base success rate is lower and failure demonstrations (object falling from the gripper) are potentially unsafe. We divide the task into \textit{Pick}, \textit{Transport}, \textit{Place}, and \textit{Retreat}, each with an object-conditioned primitive, and train from 2 demonstrations using relative distances and a binary gripper state. Over 42 trials with perturbations---moving objects during execution, inducing grasp failures and incorrect placements, and pulling the box from the gripper mid-transport---all efficiency metrics (completion time, path length) are again worse for the tuned automaton than for SEAL (Fig.~\ref{fig:scooping_pnp}E--H), though by a smaller margin than in scooping. Here we fix the transition threshold and instead vary start and goal positions to test generalization.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{User Study: Restocking}
@@ -609,31 +384,34 @@ The robot picks a box and places it near a target, both tracked with AprilTags~\
 All experiments so far used author-collected demonstrations. Because an LfD method's performance depends on the user, we conduct a study with 10 participants of varying familiarity with kinesthetic teaching and LfD, on a restocking task adapted from Ajanovi\'c et al.~\cite{11369949}. Their supermarket scenario used fixed object locations; our adaptation tracks the bottle and basket dynamically, so the localizer must generalize across spatial configurations. They found that users' preferences varied widely and that segmented demonstrations yielded slightly smoother, more successful policies at the cost of more demonstration time---supporting our use of segmented demonstrations.
 
 \begin{figure*}[t]
-    \centering
-    \includegraphics[width=\textwidth]{Figures/restocking_banner.png}
-    \caption{\textbf{Restocking task.} The decomposition into \textit{Grasp\_Top}, \textit{Place\_Table}, \textit{Grasp\_Side}, \textit{Place\_Shelf} isolates the effect of SEAL's active-learning loop.}
-    \label{fig:restocking_banner}
+\centering
+\input{Figures/tikz/fig9_restocking}
+\caption{\textbf{Restocking task.} The nominal sequence \textit{Grasp\_Top} $\to$ \textit{Place\_Table} $\to$ \textit{Grasp\_Side} $\to$ \textit{Place\_Shelf}: a cluttered basket forces the top grasp and the low shelf forces the side grasp, so the decomposition isolates the effect of SEAL's active-learning loop.}
+\label{fig:restocking_banner}
 \end{figure*}
 
 Because a cluttered basket forces a top grasp and a low shelf forces a side grasp, the task decomposes into \textit{Grasp\_Top}, \textit{Place\_Table}, \textit{Grasp\_Side}, \textit{Place\_Shelf} (Fig.~\ref{fig:restocking_banner}). We fix the features via the LLM so that only demonstration quality and diversity vary. The protocol: (1) participants give two segmented demonstrations aiming to maximize diversity (the \emph{Unguided} baseline); (2) we seed the GPC with the first demonstration and select 4 uncertain points (two gripper-open, two gripper-closed) via center-weighted epistemic uncertainty; (3) for each point we set up the corresponding scene and ask the participant to label and demonstrate the correct action to completion, yielding 4 sub-demonstrations that, with the first demonstration, form the \emph{SEAL Guided} set; (4) participants answer qualitative questions after each condition. We keep the count at 2 to probe the low-data regime and because participant frustration rose with more demonstrations; requesting 4 short sub-demonstrations (rather than 4 full ones) keeps the SEAL set comparable in points and collection time to the Unguided set while being more intuitive.
 
-We test three hypotheses: (H1) even when asked to maximize diversity, users produce demonstrations with large state-space overlap; (H2) targeting uncertain, low-data regions yields a better classifier; (H3) users prefer the SEAL protocol. The final dataset comprises 20 sets (one Unguided, one SEAL per participant).
+We test three hypotheses: (H1) even when explicitly asked to maximize diversity, users produce demonstrations with large state-space overlap; (H2) demonstrations elicited at SEAL's uncertainty queries yield a better classifier than the same user's unguided demonstrations; (H3) users prefer the SEAL protocol. The final dataset comprises 20 sets (one Unguided, one SEAL per participant).
 
 \textbf{Diversity (H1).} Since the first demonstration is shared, we measure the Mean Minimum Distance from points in subsequent demonstrations to same-mode points in the first,
 \[
 \text{MMD}(A,B)=\frac{1}{|B|}\sum_{b\in B}\min_{a\in A}\|a-b\|.
 \]
-The SEAL set ($\mu{=}0.247,\sigma{=}0.078$) is significantly more diverse than Unguided ($\mu{=}0.096,\sigma{=}0.108$), $t{=}4.17$ ($p<0.01$), confirming H1. Because classifier accuracy is a property of the data rather than of who staged the scene, this and the mIoU result below are robust to the scene-setup confound noted in Sec.~\ref{sec:limitations}.
+The SEAL set ($\mu{=}0.247,\sigma{=}0.078$) is significantly more diverse than Unguided ($\mu{=}0.096,\sigma{=}0.108$), $t{=}4.17$ ($p<0.01$). The Unguided figure is the direct evidence for H1: despite the explicit instruction to maximize diversity, participants' second demonstrations stayed on average within \todo{state Unguided MMD as a fraction of the workspace/feature-range scale, so ``0.096 is small'' is anchored} of their first. \todo{given $N{=}10$, add Wilcoxon signed-rank and an effect size alongside each $t$-test in this section (H1 MMD, H2 paired mIoU, H3 mental effort)} Because classifier accuracy is a property of the data rather than of who staged the scene, this and the mIoU result below are robust to the scene-setup confound noted in Sec.~\ref{sec:limitations}.
 
-\textbf{Classifier performance (H2).} We train 10 GPCs per dataset and report mIoU against a ground-truth classification defined by an independently hand-designed automaton over the full feature set (not from any trained model, hence non-circular). Focusing on the per-participant \emph{relative} change to control for individual expertise (Fig.~\ref{fig:participant_perf}), 7 of 10 participants improved with SEAL and 2 others changed within training-run variance, supporting H2. One participant (P09) declined markedly: they provided labels inconsistent with the ground-truth classification during the SEAL sub-demonstrations, underscoring the method's dependence on label quality (Sec.~\ref{sec:limitations}).
+\textbf{Classifier performance (H2).} We train 10 GPCs per dataset and report mIoU against a ground-truth classification defined by an independently hand-designed automaton over the full feature set (not from any trained model, hence non-circular). Focusing on the per-participant \emph{relative} change to control for individual expertise (Fig.~\ref{fig:participant_perf}), 7 of 10 participants improved with SEAL and 2 others changed within training-run variance, supporting H2 (\todo{report the paired test over the 10 per-participant mIoU pairs---Wilcoxon signed-rank $W$, $p$, effect size}). One participant (P09) declined markedly: they provided labels inconsistent with the ground-truth classification during the SEAL sub-demonstrations, underscoring the method's dependence on label quality (Sec.~\ref{sec:limitations}).
 
 \begin{figure}[htbp]
-\centerline{\includegraphics[width=0.5\textwidth]{Figures/pref.png}}
-\caption{\textbf{User preferences:} more users prefer SEAL guidance over Unguided demonstrations on Comfort, Trust, and Perceived Effectiveness in a head-to-head comparison.}
+\centering
+\input{Figures/tikz/fig10_user_pref}
+\caption{\textbf{User preferences:} more users prefer SEAL guidance over Unguided demonstrations on Comfort, Trust, and Perceived Effectiveness in a head-to-head comparison ($N{=}10$; no participant chose ``Both'').}
 \label{fig:user_pref}
 \end{figure}
 
 \begin{figure}[htbp]
+% Kept as raster: the +-1 SD error-bar magnitudes are not recoverable from the
+% image; redraw in pgfplots once the per-participant mean/SD table is available.
 \centerline{\includegraphics[width=0.5\textwidth]{Figures/miou.png}}
 \caption{\textbf{mIoU per participant} for SEAL- and Unguided-trained models, averaged over 10 runs; error bars show $\pm1$ SD.}
 \label{fig:participant_perf}
@@ -653,11 +431,13 @@ We presented SEAL, which learns the localization function of a designed task aut
 \label{app:ablation}
 \begin{figure*}[t]
 \centering
-\includegraphics[width=1\textwidth]{Figures/ablation.png}
-\caption{Performance of different classifier models; mIoU in brackets.}
+\input{Figures/tikz/figA_ablation}
+\caption{\textbf{Classifier ablation on 2D navigation.} Top row: learned mode regions and mIoU per model against the ground truth (e). Bottom row: uncertainty landscapes; only the GPC exposes an epistemic component (j) that grows in the unobserved top-right region, while the MLP (h) remains confident there.}
 \label{fig:ablation}
 \end{figure*}
-We ablate the classifier on the simulated 2D Navigation task, replacing the GPC with an MLP, logistic regression, and $k$-NN, all trained on the same data with hyperparameter tuning (Fig.~\ref{fig:ablation}). The simpler $k$-NN and logistic models underfit, while the MLP approaches the GPC's mIoU. However, unlike an MLP---which is overconfident far from training data---the GPC's posterior uncertainty grows where samples are sparse (Fig.~\ref{fig:ablation}f--j): the top-right region, unobserved in the initial demonstrations, is correctly flagged as uncertain by the GPC (i) while the MLP (h) stays confident. The GPC yields epistemic uncertainty (j) directly, without the expensive ensembling or MC-dropout other models require, and this drives active queries into informative, unexplored regions, making learning robust to sub-optimal initial demonstrations. \textbf{Calibration.} Because our confidence gating relies on the variational posterior, which can under-estimate uncertainty, we report a reliability diagram of the gated confidences and the resulting choice of $\tau$: \todo{insert calibration/reliability diagram and chosen $\tau$}. \textbf{Product kernel vs.\ independent GPs.} On the Stack task we compare the product kernel against fitting an independent GP per gripper state: \todo{report mIoU parity on binary contexts and the scaling advantage for $>2$ contexts}.
+\textbf{Implementation details.} \todo{state the GPC implementation: number of inducing points $M$, kernel and initialization, variational distribution, optimizer and iterations, and training time per round} \todo{report inference latency vs.\ dataset size/inducing points on the deployment machine, substantiating the 30\,Hz monitoring claim of the abstract and Sec.~II}
+
+\textbf{Classifier ablation.} We ablate the classifier on the simulated 2D Navigation task, replacing the GPC with an MLP, logistic regression, and $k$-NN, all trained on the same data (\todo{state the hyperparameter-tuning protocol used for the baselines, so the comparison is demonstrably fair}) (Fig.~\ref{fig:ablation}). The simpler $k$-NN and logistic models underfit; the MLP comes closest among the baselines to the GPC's mIoU. However, unlike an MLP---which is overconfident far from training data---the GPC's posterior uncertainty grows where samples are sparse (Fig.~\ref{fig:ablation}f--j): the top-right region, unobserved in the initial demonstrations, is correctly flagged as uncertain by the GPC (i) while the MLP (h) stays confident. The GPC yields epistemic uncertainty (j) directly, without the expensive ensembling or MC-dropout other models require, and this drives active queries into informative, unexplored regions, making learning robust to sub-optimal initial demonstrations. \textbf{Calibration.} Because our confidence gating relies on the variational posterior, which can under-estimate uncertainty, we report a reliability diagram of the gated confidences and the resulting choice of $\tau$: \todo{insert calibration/reliability diagram and chosen $\tau$}. \textbf{Product kernel vs.\ independent GPs.} On the Stack task we compare the product kernel against fitting an independent GP per gripper state: \todo{report mIoU parity on binary contexts and the scaling advantage for $>2$ contexts}.
 
 \section{Feature Selection: A Worked Example}
 \label{app:feature}
@@ -670,7 +450,7 @@ We argue that MI alone is insufficient for feature reduction: in the few-shot re
 
 \textbf{Phase 1 (initial, under-specified prompt).} The operator omits that the bottle starts inside the basket:
 \begin{quote}\small\itshape ``The objective is to restock the bottle onto the shelf. The robot must first establish a top grasp to lift the carton, place it on the table, transition to a side grasp, and finally place it on the shelf.''\end{quote}
-The LLM proposes \{\textit{is\_grasped}, \textit{relative\_alignment}, \textit{z\_dist\_table}, \textit{z\_dist\_shelf}\}, whose $X_{\text{sel}}$ yields a joint MI of only $1.1036$ nats---well below the raw baseline $I(X_{\text{raw}};Y)\approx1.2737$ nats. The verification layer rejects it and requests a more descriptive prompt.
+The LLM proposes \{\textit{is\_grasped}, \textit{relative\_alignment}, \textit{z\_dist\_table}, \textit{z\_dist\_shelf}\}, whose $X_{\text{sel}}$ yields a joint MI of only $1.1036$ nats---well below the raw baseline $I(X_{\text{raw}};Y)\approx1.2737$ nats. The verification layer rejects it and requests a more descriptive prompt. (The raw baseline sits below the theoretical maximum $H(Y)=\ln 4\approx1.386$ nats because points near guards are intrinsically ambiguous and the $k$-NN estimator is biased at small sample sizes; the sufficiency test therefore compares against the empirical raw baseline, not against $H(Y)$.) \todo{verify: the Phase-1 MI ($1.1036$) is identical to four decimals to the ``Drop $d_{\text{basket}}$'' entry in the Phase-3 table, although the two feature sets differ---check both values against the experiment logs}
 
 \textbf{Phase 2 (corrected prompt).} The operator adds the physical bottleneck:
 \begin{quote}\small\itshape ``\dots When the carton is inside the basket, the robot can only grasp it from the top. If the carton is grasped from the top, the robot must place it on the table and regrasp it from the side before placing it on the tight shelf.''\end{quote}
@@ -690,7 +470,7 @@ Drop $h_{\text{carton}}$   & \textbf{1.2706} & $\mathbf{+0.0002}$ (Redundant) \\
 \end{tabular}%
 }
 \end{center}
-Omitting the absolute coordinate $h_{\text{carton}}$ incurs zero information loss, so it is discarded, finalizing the causally robust 3D space $F_{\min}=[d_{\text{basket}},is_{\text{held}},\theta_{\text{rel}}]$.
+A drop is marked \emph{Critical} when the loss exceeds the same tolerance $\epsilon$ used in the sufficiency check (Sec.~\ref{sec:feature_engineering}), and \emph{Redundant} otherwise; the $+0.0002$ nat ``gain'' from dropping $h_{\text{carton}}$ is within estimator noise. Omitting the absolute coordinate thus incurs zero information loss, and it is discarded, finalizing the causally robust 3D space $F_{\min}=[d_{\text{basket}},is_{\text{held}},\theta_{\text{rel}}]$.
 
 \bibliographystyle{/Users/ravi-imac/Library/CloudStorage/OneDrive-IndianInstituteofScience/Overleaf/SEAL/bib/IEEEtran}
 \bibliography{/Users/ravi-imac/Library/CloudStorage/OneDrive-IndianInstituteofScience/Overleaf/SEAL/bib/example}

@@ -1,0 +1,17 @@
+% Redrawn in pgfplots from the value labels of the old pref.png.
+\begin{tikzpicture}
+\begin{axis}[
+  ybar, bar width=8pt, width=\columnwidth, height=5.2cm,
+  ymin=0, ymax=10, ylabel={\# participants},
+  symbolic x coords={SEAL,Unguided,Both}, xtick=data,
+  enlarge x limits=0.3,
+  legend style={at={(0.97,0.97)}, anchor=north east, font=\scriptsize},
+  nodes near coords, every node near coord/.append style={font=\scriptsize},
+  tick label style={font=\scriptsize}, label style={font=\scriptsize},
+]
+\addplot[fill=seal!25, draw=seal!60]      coordinates {(SEAL,6) (Unguided,4) (Both,0)};
+\addplot[fill=seal!60, draw=seal]         coordinates {(SEAL,7) (Unguided,2) (Both,0)};
+\addplot[fill=seal, draw=seal!50!black]   coordinates {(SEAL,6) (Unguided,4) (Both,0)};
+\legend{usage comfort, trust, perceived effectiveness}
+\end{axis}
+\end{tikzpicture}

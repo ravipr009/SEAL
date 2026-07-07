@@ -1,0 +1,14 @@
+% Crops of the old comparison_GLiDE.png; regenerate with paper palette.
+\resizebox{\columnwidth}{!}{%
+\begin{tikzpicture}[font=\small,
+  photo/.style={inner sep=0pt}, lbl/.style={font=\scriptsize, align=center}]
+\node[photo] (gt) {\includegraphics[width=2.05cm]{Figures/exp_frames/cmp_gt.png}};
+\node[photo, right=2mm of gt] (s) {\includegraphics[width=2.05cm]{Figures/exp_frames/cmp_seal.png}};
+\node[photo, right=2mm of s] (n) {\includegraphics[width=2.05cm]{Figures/exp_frames/cmp_naive.png}};
+\node[photo, right=2mm of n] (g) {\includegraphics[width=2.05cm]{Figures/exp_frames/cmp_glide.png}};
+\node[lbl, below=0.5mm of gt] {(a) ground truth};
+\node[lbl, below=0.5mm of s, seal] {(b) SEAL\\ $6{+}6$ demos};
+\node[lbl, below=0.5mm of n, seal!60!black] {(c) SEAL, no\\ active round};
+\node[lbl, below=0.5mm of g, glide] {(d) GLiDE, $6$ demos\\ ${+}1000$ rollouts};
+\end{tikzpicture}%
+}

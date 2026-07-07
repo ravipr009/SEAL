@@ -1,0 +1,28 @@
+% Panel crops of the old ablation.png (Figures/exp_frames/ab_*.png);
+% regenerate from matplotlib (same filenames) for print quality.
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[font=\small,
+  photo/.style={inner sep=0pt, draw=gray!40, thin},
+  lbl/.style={font=\scriptsize, align=center}]
+\node[photo] (a) {\includegraphics[width=3.2cm]{Figures/exp_frames/ab_knn.png}};
+\node[photo, right=2mm of a] (b) {\includegraphics[width=3.2cm]{Figures/exp_frames/ab_lr.png}};
+\node[photo, right=2mm of b] (c) {\includegraphics[width=3.2cm]{Figures/exp_frames/ab_mlp.png}};
+\node[photo, right=2mm of c] (d) {\includegraphics[width=3.2cm]{Figures/exp_frames/ab_seal.png}};
+\node[photo, right=2mm of d] (e) {\includegraphics[width=3.2cm]{Figures/exp_frames/ab_gt.png}};
+\node[lbl, above=0.5mm of a] {(a) $k$-NN, mIoU 0.699};
+\node[lbl, above=0.5mm of b] {(b) logistic regr., mIoU 0.664};
+\node[lbl, above=0.5mm of c] {(c) MLP, mIoU 0.719};
+\node[lbl, above=0.5mm of d] {(d) \textbf{SEAL (GPC), mIoU 0.820}};
+\node[lbl, above=0.5mm of e] {(e) ground truth};
+\node[photo, below=6mm of a] (f) {\includegraphics[width=3.2cm]{Figures/exp_frames/ab_knn_u.png}};
+\node[photo, right=2mm of f] (g) {\includegraphics[width=3.2cm]{Figures/exp_frames/ab_lr_u.png}};
+\node[photo, right=2mm of g] (h) {\includegraphics[width=3.2cm]{Figures/exp_frames/ab_mlp_u.png}};
+\node[photo, right=2mm of h] (i) {\includegraphics[width=3.2cm]{Figures/exp_frames/ab_seal_u.png}};
+\node[photo, right=2mm of i] (j) {\includegraphics[width=3.2cm]{Figures/exp_frames/ab_seal_epi.png}};
+\node[lbl, below=0.5mm of f] {(f) $k$-NN margin unc.};
+\node[lbl, below=0.5mm of g] {(g) logistic margin unc.};
+\node[lbl, below=0.5mm of h] {(h) MLP margin unc.};
+\node[lbl, below=0.5mm of i] {(i) SEAL margin unc.};
+\node[lbl, below=0.5mm of j] {(j) SEAL epistemic unc.};
+\end{tikzpicture}%
+}

@@ -1,0 +1,19 @@
+% Redrawn in pgfplots from the value labels of the old robosuite_wiping.png.
+\begin{tikzpicture}
+\begin{axis}[
+  ybar, bar width=5pt, width=\columnwidth, height=5.2cm,
+  ymin=0, ymax=119, ylabel={success rate (\%)},
+  symbolic x coords={Wiping,Lift,Stack}, xtick=data,
+  enlarge x limits=0.25,
+  legend style={at={(0.5,1.02)}, anchor=south, legend columns=4,
+                font=\scriptsize, /tikz/every even column/.append style={column sep=3pt}},
+  nodes near coords, every node near coord/.append style={font=\tiny, rotate=90, anchor=west},
+  tick label style={font=\scriptsize}, label style={font=\scriptsize},
+]
+\addplot[fill=gray!25, draw=gray!60]  coordinates {(Wiping,100) (Lift,99) (Stack,97)};
+\addplot[fill=seal!25, draw=seal!60]  coordinates {(Wiping,100) (Lift,100) (Stack,96)};
+\addplot[fill=gray!70, draw=gray]     coordinates {(Wiping,65.6) (Lift,43) (Stack,73)};
+\addplot[fill=seal, draw=seal!50!black] coordinates {(Wiping,96.9) (Lift,92) (Stack,90)};
+\legend{open-loop (nom.), SEAL (nom.), open-loop (pert.), SEAL (pert.)}
+\end{axis}
+\end{tikzpicture}

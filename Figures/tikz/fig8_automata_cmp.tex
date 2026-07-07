@@ -1,0 +1,59 @@
+% Redrawn in pgfplots from the value labels of the old stacking_pnp.png.
+% VERIFY against raw data: (i) the first transition-threshold value is assumed
+% to be 2 (leftmost point sits left of the "5" tick in the original); (ii) at
+% threshold 20 the labels of panels C and D overlap in the original -- values
+% used: C automata 1.28 / SEAL 1.27, D automata 37.16 / SEAL 36.87.
+\pgfplotsset{exppanel/.style={width=4.65cm, height=3.6cm,
+  tick label style={font=\tiny}, label style={font=\tiny},
+  title style={font=\scriptsize}, ymajorgrids, grid style={gray!20}}}
+\begin{tikzpicture}[font=\small]
+\matrix[column sep=2mm, row sep=0mm] {
+\begin{axis}[exppanel, ybar, bar width=4.5pt, title={A: Scooping mismatch},
+  ylabel={mismatch frames}, symbolic x coords={None,Flicker,Jitter}, xtick=data,
+  enlarge x limits=0.3, ymin=0]
+\addplot[fill=glide, draw=glide!50!black] coordinates {(None,68.7) (Flicker,97.3) (Jitter,127.5)};
+\addplot[fill=seal, draw=seal!50!black] coordinates {(None,0.0) (Flicker,38.3) (Jitter,27.2)};
+\end{axis} &
+\begin{axis}[exppanel, title={B: Scooping transitions}, ylabel={total transitions},
+  xlabel={transition threshold}, xtick={2,5,10,20}, ymin=0]
+\addplot[glide, thick, mark=square*] coordinates {(2,13.00) (5,5.67) (10,6.33) (20,3.00)};
+\addplot[seal, thick, mark=*] coordinates {(2,3.00) (5,3.00) (10,3.00) (20,3.00)};
+\end{axis} &
+\begin{axis}[exppanel, title={C: Scooping path length}, ylabel={path length (m)},
+  xlabel={transition threshold}, xtick={2,5,10,20}]
+\addplot[glide, thick, mark=square*] coordinates {(2,1.40) (5,1.41) (10,1.44) (20,1.28)};
+\addplot[seal, thick, mark=*] coordinates {(2,1.27) (5,1.27) (10,1.28) (20,1.27)};
+\end{axis} &
+\begin{axis}[exppanel, title={D: Scooping completion time}, ylabel={time (s)},
+  xlabel={transition threshold}, xtick={2,5,10,20}]
+\addplot[glide, thick, mark=square*] coordinates {(2,42.98) (5,40.44) (10,42.59) (20,37.16)};
+\addplot[seal, thick, mark=*] coordinates {(2,37.25) (5,37.25) (10,36.55) (20,36.87)};
+\end{axis} \\
+\begin{axis}[exppanel, ybar, bar width=6pt, title={E: P\&P mismatch},
+  ylabel={mismatch frames}, symbolic x coords={Nominal,Perturbed}, xtick=data,
+  enlarge x limits=0.5, ymin=0]
+\addplot[fill=glide, draw=glide!50!black] coordinates {(Nominal,49.0) (Perturbed,151.1)};
+\addplot[fill=seal, draw=seal!50!black] coordinates {(Nominal,18.0) (Perturbed,56.6)};
+\end{axis} &
+\begin{axis}[exppanel, ybar, bar width=6pt, title={F: P\&P transitions},
+  ylabel={total transitions}, symbolic x coords={Nominal,Perturbed}, xtick=data,
+  enlarge x limits=0.5, ymin=0]
+\addplot[fill=glide, draw=glide!50!black] coordinates {(Nominal,4.7) (Perturbed,12.7)};
+\addplot[fill=seal, draw=seal!50!black] coordinates {(Nominal,3.7) (Perturbed,8.0)};
+\end{axis} &
+\begin{axis}[exppanel, ybar, bar width=6pt, title={G: P\&P path length},
+  ylabel={path length (m)}, symbolic x coords={Nominal,Perturbed}, xtick=data,
+  enlarge x limits=0.5, ymin=0]
+\addplot[fill=glide, draw=glide!50!black] coordinates {(Nominal,1.54) (Perturbed,3.01)};
+\addplot[fill=seal, draw=seal!50!black] coordinates {(Nominal,1.26) (Perturbed,2.47)};
+\end{axis} &
+\begin{axis}[exppanel, ybar, bar width=6pt, title={H: P\&P completion time},
+  ylabel={time (s)}, symbolic x coords={Nominal,Perturbed}, xtick=data,
+  enlarge x limits=0.5, ymin=0]
+\addplot[fill=glide, draw=glide!50!black] coordinates {(Nominal,34.0) (Perturbed,68.8)};
+\addplot[fill=seal, draw=seal!50!black] coordinates {(Nominal,31.6) (Perturbed,55.7)};
+\end{axis} \\
+};
+\node[anchor=north, font=\scriptsize] at (current bounding box.south)
+  {\textcolor{glide}{$\blacksquare$} tuned automaton \quad \textcolor{seal}{$\blacksquare$} SEAL \quad (lower is better in all panels)};
+\end{tikzpicture}

@@ -1,0 +1,16 @@
+% Photo crops of the old restocking_banner.png (Figures/exp_frames/rst_*.png);
+% replace with high-res originals (same filenames) when available.
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[font=\small,
+  photo/.style={inner sep=0pt}, lbl/.style={font=\scriptsize, align=center}]
+\node[photo] (r1) {\includegraphics[height=2.9cm]{Figures/exp_frames/rst_grasptop.png}};
+\node[photo, right=2mm of r1] (r2) {\includegraphics[height=2.9cm]{Figures/exp_frames/rst_placetable.png}};
+\node[photo, right=2mm of r2] (r3) {\includegraphics[height=2.9cm]{Figures/exp_frames/rst_graspside.png}};
+\node[photo, right=2mm of r3] (r4) {\includegraphics[height=2.9cm]{Figures/exp_frames/rst_placeshelf.png}};
+\node[lbl, below=1mm of r1] {1.\ \textit{Grasp\_Top}};
+\node[lbl, below=1mm of r2] {2.\ \textit{Place\_Table}};
+\node[lbl, below=1mm of r3] {3.\ \textit{Grasp\_Side}};
+\node[lbl, below=1mm of r4] {4.\ \textit{Place\_Shelf}};
+\draw[->, thick] (r1) -- (r2); \draw[->, thick] (r2) -- (r3); \draw[->, thick] (r3) -- (r4);
+\end{tikzpicture}%
+}
