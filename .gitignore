@@ -21,6 +21,5 @@
 # Editor
 *.swp
 
-# Generated PDFs from the revision build (reproducible via latexmk / pdflatex)
+# Generated PDF of the current manuscript (reproducible via latexmk -pdf TRL.tex)
 TRL.pdf
-Figures/positioning_figure.pdf
