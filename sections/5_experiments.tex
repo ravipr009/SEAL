@@ -1,0 +1,107 @@
+\section{Experiments}
+\label{sec:experiments}
+We evaluate SEAL on five simulated and real-world tasks, addressing four questions: (Q1) Can uncertainty-targeted active querying recover guards as accurate as perturbation-based grounding, replacing thousands of oracle-labeled failure rollouts with a handful of safe human demonstrations? (Q2) Does confidence gating reduce false-positive transitions without added latency, relative to a tuned automaton? (Q3) Do goal reachability and mode invariance hold on the learned regions? (Q4) Does the framework transfer to non-expert users?
+
+Table~\ref{tab:exp_overview} maps tasks to questions. In each task we compare against the strongest baseline available there: GLiDE on the 2D navigation task it defines (where simulated resets and an outcome oracle exist); a hand-tuned automaton on scooping and pick-and-place, where an expert can construct threshold rules on the same features; and open-loop execution on the Robosuite tasks, which isolate reactive recovery. Throughout, \emph{completion time} is the wall-clock time from task start to the terminal mode, \emph{path length} is the accumulated end-effector displacement, and a \emph{false-positive transition} is a gated mode switch triggered by observation noise rather than by an actual change of mode; mIoU measures the overlap between learned and ground-truth mode regions over the workspace. \todo{STATISTICS (co-author): the section currently reports point estimates with no spread and no tests, yet says ``significantly'' (scooping) --- formally an unbacked claim. From the experiment logs, for EACH SEAL-vs-baseline comparison report mean$\pm$std with per-condition $n$, plus one paired significance test (Wilcoxon signed-rank preferred at these sample sizes). Touches: (a) scooping, 24 trials --- completion time, path length, false-positive transitions per threshold level; (b) pick-and-place, 42 trials --- same metrics, nominal vs perturbed; (c) Robosuite success rates, $n{=}100$ episodes --- binomial/Wilson CIs suffice; (d) 2D-nav mIoU --- if per-seed runs exist, mean$\pm$std over seeds. Same pass should close the two Wilcoxon todos in the user study (H1 MMD, H2 paired per-participant mIoU).} \todo{PERTURBATION PROTOCOL (co-author): phrases like ``random external forces'', ``spanning perturbation levels'', ``random gripper perturbations'' are not reproducible. Add a short appendix (one paragraph or table row per task) stating, for each task: WHAT is perturbed (body/joint/object), MAGNITUDE and its distribution (force in N / displacement in cm / sampling range), WHEN it is applied (fixed phase vs.\ random time within the episode), HOW MANY episodes per perturbation level, and---for scooping specifically---how ``perturbation level'' is parameterized across the 24-trial grid and how the transition-threshold values $\{2,5,10,20\}$ were chosen.}
+
+\begin{table}[t]
+\centering
+\caption{Overview of the experimental evaluation.}
+\label{tab:exp_overview}
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{lllll}
+\toprule
+\textbf{Task} & \textbf{Platform} & \textbf{Demos} & \textbf{Baseline} & \textbf{Q} \\
+\midrule
+2D navigation & sim + FR3 & $6{+}6$ & GLiDE, no-active & Q1, Q3 \\
+Wiping & Robosuite & $2$ & open-loop & Q3 \\
+Lift/Stack & Robosuite & $3{+}4$ & open-loop & Q3 \\
+Scooping & FR3 & $4$ & tuned automaton & Q2, Q3 \\
+Pick-and-place & FR3 & $2$ & tuned automaton & Q2 \\
+Restocking & FR3 + users & $10$ users & unguided demos & Q4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure*}[t]
+\centering
+\input{Figures/tikz/fig4_nav2d}
+\caption{\textbf{2D navigation on hardware (FR3).} (a) Guards learned from 6+6 demonstrations match the ground-truth mode regions; in this task feature space \emph{is} the workspace, so the guards of Fig.~\ref{fig:seal_ltl_comp} are directly visible. (b) A perturbation drives the state across a non-nominal boundary and the localizer re-engages the correct mode. (c) The perturbation induces an invalid transition; the red segment shows the recovery re-traversal completing the prescribed sequence.}
+\label{fig:2d_recovery}
+\end{figure*}
+
+\subsection{2D Navigation (Simulation and Hardware)}
+\label{sec:2d_nav}
+% TODO(fig-consistency): captions/labels now use Fig.-1 language; remaining step is
+% regenerating the raster panels (exp_frames/nav_*, cmp_*) from matplotlib with the
+% paper palette: seal RGB(0,140,90), glide RGB(200,120,0), tli RGB(80,80,80), and the
+% Fig.-1 markers (solid demos, circled queries, dashed queried sub-demos).
+Replicated from GLiDE, the task is to traverse colored 2D regions in a prescribed order (Fig.~\ref{fig:comparison}a); here $F_{\min}$ is simply the $(x,y)$ coordinate. We request 6 demonstrations from mode~1 to mode~4 from varied starts, train an initial classifier, select 6 uncertain points, request 6 sub-demonstrations through them, and retrain on the combined 12. As boundary accuracy matters more than labeling the entire space here, we use margin uncertainty. We compare against GLiDE seeded with the same 6 demonstrations and its simulated perturbations.
+
+Fig.~\ref{fig:comparison} shows that SEAL after active querying (b) closely matches the ground truth (a), and clearly improves on the pre-query classifier (c), demonstrating the value of active learning. Table~\ref{tab:miou_results} reports mean Intersection-over-Union (mIoU) against ground truth: SEAL matches GLiDE with 1000 perturbations, while GLiDE degrades sharply as its perturbation budget shrinks. We emphasize the correct accounting of supervision (Q1): GLiDE's perturbations are autonomous and cheap in simulation but require an outcome oracle and a resettable environment, whereas SEAL's additional cost is 6 safe human sub-demonstrations and no oracle; the comparison is thus of \emph{supervision type and safety} (what must exist for each method to run), not of raw sample count or human minutes. Crucially, SEAL never accesses ground-truth labels during training, unlike GLiDE's success oracle. We do not claim to surpass GLiDE, which solves the harder problem of learning from sparse success/failure feedback; we show we can match it with a little more human effort and none of the oracle, perturbation, or reset machinery. \todoexp{RANDOM-QUERY BASELINE (co-author; TODO.md A2). Why: the current result (post-query $>$ pre-query) conflates ``more data helps'' with ``uncertainty-TARGETED selection helps''---the standard active-learning reviewer objection. What to run: repeat the exact 2D-nav pipeline once, but draw the 6 query points uniformly at random from the bounding box of $\mathcal{D}_0$ instead of by acquisition score; same seed demos, same batch size, same retraining; repeat over $\geq$5 random seeds and report mean$\pm$std mIoU. Deliverable: one row ``SEAL (random queries), 12 safe demos'' in Table~\ref{tab:miou_results} + one sentence. Expected outcome: random sits between no-active (0.73) and SEAL-active (0.82); if it matches SEAL-active, the acquisition function adds nothing on this task and the claim must be softened. Pure software, hours.} \todoexp{SEQUENCE-AWARE BASELINE (co-author; TODO.md A3). Why: the memoryless-is-better argument (Sec.~\ref{sec:supervision}) is purely structural; no experiment shows a history-conditioned localizer masking anomalous transitions. What to run: on 2D nav, train a sequence-aware localizer on the SAME 6+6 demos---simplest credible choices: (a) an HMM whose emission model is fit per mode with the nominal transition matrix estimated from demos, decoded online (filtering, not Viterbi smoothing), or (b) the same GPC with a majority-vote/moving-average filter over the last $k$ predictions. Test: inject the standard perturbation episodes (state teleported across a non-nominal boundary) and measure, vs.\ the memoryless GPC: detection latency (steps from boundary crossing to correct re-localization) and miss rate (episodes where the nominal-order prior never lets the estimate switch). Prediction from the structural argument: the HMM's transition prior delays or suppresses exactly the non-nominal switches; if it does not, weaken the memoryless claim in Sec.~IV-E rather than defend it. Deliverable: 2--3 sentences + small table (latency, miss rate) here or in an appendix.}
+
+\begin{figure}[htbp]
+\centering
+\input{Figures/tikz/fig5_comparison2d}
+\caption{\textbf{Learned mode regions on 2D navigation.} SEAL with one active round (b) recovers the ground-truth partition (a) as accurately as GLiDE with 1000 oracle-labeled rollouts (d), and markedly better than without the active round (c).}
+\label{fig:comparison}
+\end{figure}
+
+\begin{table}[h]
+    \centering
+    \caption{Mean IoU Comparison on 2D Navigation}
+    \label{tab:miou_results}
+    \begin{tabular}{llc}
+        \toprule
+        \textbf{Method} & \textbf{Supervision} & \textbf{mIoU} \\
+        \midrule
+        SEAL (Ours) & 12 safe demos & \textbf{0.82} \\
+        GLiDE & 6 demos + 1000 oracle rollouts & 0.80 \\
+        SEAL (no active round) & 6 safe demos & 0.73 \\
+        GLiDE & 6 demos + 400 oracle rollouts & 0.63 \\
+        GLiDE & 6 demos + 100 oracle rollouts & 0.53 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+We replicate the task on a Franka FR3 7-DOF arm with 6+6 demonstrations; Fig.~\ref{fig:2d_recovery} shows the learned guards matching the ground-truth regions on hardware and a full perturbation--recovery episode, in which the localizer re-localizes the perturbed state and completes the prescribed sequence. \textbf{Empirical certificate (Q3).} We define the Level-1 certificate per rollout: an \emph{invariance violation} occurs if the feature trajectory exits $R_m$ through any boundary other than the nominal guard $G_{m,m'}$ (Definition~\ref{def:inv}), and \emph{reachability success} if it enters $G_{m,m'}$; rates are aggregated over unperturbed rollouts per mode. On this task we also evaluate the invariance/reachability-augmented acquisition of Sec.~\ref{sec:active}: \todo{INVARIANCE/REACHABILITY RATES + GUARD-REFINEMENT EFFECT, 2D NAV (co-author). This todo has two parts. PART 1, the certificate itself: for each mode $m$, roll out $\pi_m$ from $\geq$20 starts sampled inside the learned $R_m$ (unperturbed); per rollout record (i) invariance violation = feature trajectory exits $R_m$ through any boundary other than $G_{m,m'}$, per Definition~\ref{def:inv}, and (ii) reachability success = trajectory enters $G_{m,m'}$; report both rates per mode with $n$. In simulation this is minutes of compute. PART 2, before-vs-after: compute the same rates once with guards from plain uncertainty-targeted queries and once after the $\nu(\mathbf{x})$-augmented acquisition of Sec.~\ref{sec:active} (same query budget); the claim to substantiate is that violation rates drop / reachability rates rise after refinement. DECISION POINT: if Part 2 is not run this cycle, cut the sentence in Sec.~\ref{sec:active} promising ``We report its effect in Sec.~V-A'' and demote guard refinement to future work; the paper must not promise an unreported experiment.}.
+
+\subsection{Wiping}
+This task evaluates reactive recovery in a continuous, contact-rich setting (Fig.~\ref{fig:compilation}b). A Franka FR3 with an eraser must clean a marker line across three modes (\textit{approach\_align}, \textit{wipe}, \textit{done}), and SEAL trains a supervisor from only 2 demonstrations. Random external forces break contact or displace the end-effector. The open-loop policy fails under perturbation, whereas the SEAL-supervised policy continues to the \textit{done} state, substantially improving the wiped fraction (Fig.~\ref{fig:robosuite_wiping}). Recovery emerges from localization: path displacement re-localizes \textit{wipe}$\to$\textit{approach\_align}, and incomplete cleaning re-localizes \textit{done}$\to$\textit{approach\_align}.
+
+\begin{figure*}[t]
+\centering
+\input{Figures/tikz/fig6_setups}
+\caption{\textbf{Experimental setups} for the four manipulation tasks; the 2D navigation setup is shown in Fig.~\ref{fig:2d_recovery}.}
+\label{fig:compilation}
+\end{figure*}
+
+\begin{figure}[htbp]
+\centering
+\input{Figures/tikz/fig7_robosuite_bars}
+\caption{\textbf{SEAL supervision vs.\ open-loop policies on the Robosuite tasks:} supervision causes no degradation without perturbations (light bars) and substantially mitigates degradation under perturbations (dark bars).}
+\label{fig:robosuite_wiping}
+\end{figure}
+
+\begin{figure*}[t]
+\centering
+\input{Figures/tikz/fig8_automata_cmp}
+\caption{\textbf{Comparison with tuned automata.} Scooping (A--D): confidence-gated transitions eliminate false positives as the transition threshold shrinks, yielding fewer spurious transitions, shorter paths, and faster completion. Pick-and-place (E--H): SEAL improves all efficiency metrics under both nominal and perturbed conditions.}
+\label{fig:scooping_pnp}
+\end{figure*}
+
+\subsection{Block Lifting and Stacking (Robosuite)}
+We test non-monotonic features in the Lift and Stack environments~\cite{robosuite2020} (Fig.~\ref{fig:compilation}a). Gripper width is mapped to a binary \textit{grasped} feature to handle its non-monotonic profile, and relative end-effector-to-cube distances complete $F_{\min}$; SEAL trains on 7 demonstrations (3 nominal + 4 active) with separate continuous boundaries per gripper status, a case where the mixed-feature product kernel is useful. Over 100 episodes under random gripper perturbations, SEAL maintains a near-perfect nominal success rate and dramatically mitigates degradation under perturbation relative to open-loop (Fig.~\ref{fig:robosuite_wiping}).
+
+\subsection{Scooping}
+\label{sec:scooping}
+We adopt GLiDE's scooping task (Fig.~\ref{fig:compilation}c): scoop, transport, and deposit rice from a bowl to a plate using a spoon on the end-effector. Open-loop execution fails at the task level if rice spills during transport or scooping fails, a case where failure demonstrations are hard to reset and self-supervised data collection is infeasible, so GLiDE cannot be run here. We detect grains on the spoon with a wrist camera (a binary feature) and use relative end-effector-to-bowl and -plate positions, training with 4 demonstrations.
+
+Beyond comparison to open-loop, we ask how SEAL compares to a tuned automaton with expert-set thresholds: effectively an ideal, hand-built localizer that a learned classifier can only approximate but that is far harder to construct. We design and tune such an automaton on the same features. Because feature and prediction noise is unavoidable, especially near boundaries, \emph{all} classifiers, designed or learned, must confirm a switch over a small buffer to avoid false positives, trading latency against robustness. SEAL breaks this trade (Q2): with access to prediction confidence, it keeps a very small dwell and instead rejects low-confidence switches, smoothing boundary jitter; a genuine perturbation pushes the state deep into another region where confidence is high, giving a fast response. Thus SEAL attains low latency and low false-positive rate simultaneously. Note this reconciles the two roles of the automaton in our narrative: it is an accurate localizer, yet brittle to observation noise precisely because it lacks a calibrated confidence to gate on.
+
+Over 24 trials spanning perturbation levels and transition thresholds (none inducing true task failure; these test observation-noise robustness), both policies achieve 100\% eventual completion, consistent with the learned localizer faithfully approximating the automaton; the per-mode certificate of Q3 (invariance-violation and reachability-success rates, as defined in Sec.~\ref{sec:2d_nav}) is reported separately: \todo{INVARIANCE/REACHABILITY RATES, SCOOPING (co-author). Compute the same per-mode rates as in Sec.~V-A on the real system: invariance-violation rate (trajectory exits $R_m$ through a non-nominal boundary) and reachability-success rate (trajectory enters the nominal guard), per mode, over unperturbed rollouts. CHEAP PATH: if the 24 trials (and any nominal runs) were logged in $F_{\min}$, this is an OFFLINE computation---replay each logged trajectory against the learned regions and count crossings; no new robot time. Otherwise collect $\geq$10 nominal rollouts per mode. Report per-mode rates with $n$ next to the 100\%-completion statement, which currently only claims consistency; this table is what contribution 4 promises and is the paper's concrete answer to ``where are the guarantees''.}. However, as the threshold shrinks, SEAL incurs no false-positive transitions while the automaton's rise (Fig.~\ref{fig:scooping_pnp}B), giving the automaton significantly higher completion times (Fig.~\ref{fig:scooping_pnp}D) and longer paths (Fig.~\ref{fig:scooping_pnp}C). As with any learned model, SEAL's accuracy depends on demonstration quality; a classifier trained on poor data cannot outperform a tuned automaton even with confidence gating. \todoexp{OOD-DETECTOR BASELINE (co-author; TODO.md A1, highest priority of the three planned baselines). Why: Related Work claims time-conditioned OOD detectors ``do not transfer under spatial perturbation'' with no experiment behind it; this baseline turns that claim into a result. What to build: an Eiband-style detector~\cite{eiband_intuitive_2019}---fit a GMM to the SAME 4 safe scooping demos in $F_{\min}$ augmented with the time-step (or phase) variable, flag a failure when the Mahalanobis distance of the current observation to the time-conditioned nominal component exceeds a threshold; calibrate the threshold on held-out nominal rollouts (e.g., 95th/99th percentile), no failure data. What to run: the SAME perturbation episodes used for SEAL in this section (plus, ideally, the spatially shifted start/goal configurations of pick-and-place). Metrics, side by side with SEAL: true-detection rate on perturbation episodes, false-positive rate on unperturbed episodes, and detection latency. Expected outcome per the Related Work argument: under SPATIAL perturbation the time-conditioned nominal profile no longer matches (state is valid but off-schedule), so the GMM either false-alarms on benign spatial deviation or misses the rice-loss event; if instead it performs comparably to SEAL, the Related Work sentence must be softened. Deliverable: 2--3 sentences + one row/curve next to SEAL's numbers here. Reuses recorded rollouts if logged; no new hardware time otherwise beyond replay.}
+
+\subsection{Pick and Place}
+The robot picks a box and places it near a target (Fig.~\ref{fig:compilation}d), both tracked with AprilTags~\cite{7759617} and a RealSense D435i. With gripper pick-and-place motions the base success rate is lower and failure demonstrations (object falling from the gripper) are potentially unsafe. We divide the task into \textit{Pick}, \textit{Transport}, \textit{Place}, and \textit{Retreat}, each with an object-conditioned primitive, and train from 2 demonstrations using relative distances and a binary gripper state. Over 42 trials with perturbations (moving objects during execution, inducing grasp failures and incorrect placements, and pulling the box from the gripper mid-transport), all efficiency metrics (completion time, path length) are again worse for the tuned automaton than for SEAL (Fig.~\ref{fig:scooping_pnp}E--H), though by a smaller margin than in scooping. Here we fix the transition threshold and instead vary start and goal positions to test generalization.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

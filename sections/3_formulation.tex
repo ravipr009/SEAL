@@ -1,0 +1,73 @@
+\section{Problem Formulation}
+\label{sec:formulation}
+
+\subsection{Task Model}
+We model the task as a hybrid automaton $H=(\mathcal{M},\mathcal{X}_{\min},\{R_m\},\{\pi_m\},S)$, where $\mathcal{M}$ is a finite set of modes (subtasks), $\mathcal{X}_{\min}$ is a reduced continuous feature space (Sec.~\ref{sec:feature_engineering}), $R_m\subseteq\mathcal{X}_{\min}$ is the region in which mode $m$ is the correct mode to execute, $\pi_m$ is the skill (a goal-directed dynamical system) executed in mode $m$, and $S=(m_1,\dots,m_K)$ is a nominal mode sequence given by task design. The regions $\{R_m\}$ partition $\mathcal{X}_{\min}$; the boundary between adjacent regions defines a \emph{guard} $G_{m,m'}=\partial R_m\cap\partial R_{m'}$, and crossing a guard is a mode transition. The granularity of the segmentation into modes is a design choice, constrained only by Assumptions~\ref{as:obs}--\ref{as:prim} below.
+
+The partition induces the \emph{true localization function}
+\begin{equation}
+L:\ \mathcal{X}_{\min}\to\mathcal{M},\qquad L(\mathbf{x})=m \iff \mathbf{x}\in R_m ,
+\end{equation}
+which reports, for any physical state, the mode that should currently be executing. $L$ is exactly the object all grounding methods construct (Fig.~\ref{fig:seal_ltl_comp}): learning $L$ \emph{is} learning the partition $\{R_m\}$, the same object that TLI places by hand and GLiDE fits from perturbed rollouts. SEAL learns an estimator
+\begin{equation}
+f(\mathbf{x})=\arg\max_{m}\,P(m\mid\mathbf{x}),
+\end{equation}
+where $P(m\mid\mathbf{x})$ is the posterior of the Gaussian Process Classifier of Sec.~\ref{sec:gpc}. The decision surfaces of $f$ are its \emph{learned guards}; the learning problem of this paper is to make them match the true guards using only safe data.
+
+\subsection{Robustness Properties and Assumptions}
+We recall the two properties from~\cite{wang2022temporal} that govern robustness, stated here on the reduced feature space in which the localizer operates.
+
+\begin{definition}[Mode invariance]
+\label{def:inv}
+A policy $\pi_m$ with nominal successor $m'$ is \emph{invariant} on $R_m$ if every feature trajectory it induces from $\mathbf{x}\in R_m$ remains in $R_m$ until it reaches the nominal guard $G_{m,m'}$. Exiting $R_m$ through any other boundary is an \emph{invariance violation}: the task-level failure event we must detect.
+\end{definition}
+
+\begin{definition}[Goal reachability]
+\label{def:reach}
+A policy $\pi_m$ is \emph{goal-reaching} for the transition $m\!\to\!m'$ if it drives the feature state into the guard $G_{m,m'}$ (equivalently, its attractor lies in the initiation set of $m'$).
+\end{definition}
+
+Two assumptions make the problem well-posed. The first is what allows a \emph{memory-less} localizer to succeed at all.
+
+\begin{assumption}[Instantaneous observability]
+\label{as:obs}
+The mode is identifiable from the instantaneous feature vector: $L$ is well-defined on $\mathcal{X}_{\min}$, i.e., the regions $\{R_m\}$ do not overlap. Operationally, we certify this by requiring the joint mutual information between features and labels to approach the label entropy, $I(X_{\min};Y)\approx H(Y)$ (Sec.~\ref{sec:feature_engineering}).
+\end{assumption}
+
+\begin{remark}[Scope of the certificate]
+\label{rem:scope}
+The MI certificate is estimated on the \emph{demonstrated} distribution, so it certifies separability on the support of the demonstrations, not on all of $\mathcal{X}_{\min}$. Perturbations, however, drive the state into precisely the regions demonstrations never visit. Closing this gap (extending the region on which $f$ agrees with $L$ beyond the initial demonstrations, using only safe data) is the role of uncertainty-targeted active querying (Sec.~\ref{sec:active}).
+\end{remark}
+
+\begin{remark}[Feature-space vs.\ physical-space semantics]
+\label{rem:aliasing}
+Definitions~\ref{def:inv}--\ref{def:reach} are stated on $\mathcal{X}_{\min}$, and they coincide with their physical counterparts exactly under two conditions: (i) Assumption~\ref{as:obs} holds on the visited states, so that no two physically distinct situations with different modes alias to the same feature point; and (ii) every failure-relevant physical variable is represented in $F_{\min}$; a violation carried by a variable outside $F_{\min}$ is undetectable by construction. Condition~(ii) is not implied by the MI certificate: the certificate is computed on \emph{success-only} demonstrations, on which a failure-indicating feature (e.g., payload presence in a task where no demonstration ever drops the payload) may be nearly constant and would be pruned as redundant by nominal MI alone. This is why the semantic prior of Sec.~\ref{sec:feature_engineering} is prompted \emph{prescriptively}, to nominate failure-relevant features, and why such features must be retained through minimization even when their nominal MI contribution is small.
+\end{remark}
+
+\begin{assumption}[Primitive competence]
+\label{as:prim}
+Each primitive $\pi_m$ is a goal-directed dynamical system whose attractor lies in the initiation set of its successor~\cite{burridge1999sequential}. Geometric mode invariance and goal reachability thus hold \emph{by construction}. The residual, physical component of invariance (e.g., ``payload retained'') is not controllable by $\pi_m$ and is precisely what we monitor.
+\end{assumption}
+
+\subsection{Closed-Loop Behavior}
+Under these assumptions the localizer plays a dual role, which we make explicit.
+
+\begin{proposition}[Localization determines closed-loop sequencing]
+\label{prop:main}
+Let Assumptions~\ref{as:obs}--\ref{as:prim} hold, and suppose $f=L$ at every state visited by the closed-loop system. Then the mode trajectory of $H$ is determined by the guard crossings of $f$: (i) along nominal execution, each $\pi_m$ drives the state into $G_{m,m'}$ and the task completes; (ii) upon a physical invariance violation, the state exits $R_m$ through a non-nominal boundary into some region $R_k$, $f$ re-localizes to $k$, and $\pi_k$ is engaged.
+\end{proposition}
+
+\begin{proof}[Proof sketch]
+Case (i): by Assumption~\ref{as:prim}, from any $\mathbf{x}\in R_m$ the flow of $\pi_m$ reaches $G_{m,m'}$ without leaving $R_m$; since $f=L$, the transition fires exactly at the crossing, and induction over $S$ completes the task. Case (ii): a physical violation moves the state into some $R_k$ with $k\neq m'$; since the regions partition $\mathcal{X}_{\min}$ and $f=L$, $f$ outputs $k$, and execution continues from $R_k$ per case (i).
+\end{proof}
+
+The hypothesis $f=L$ on the visited states is the crux: it holds where data has constrained $f$, and fails where it has not (Remark~\ref{rem:scope}).
+
+\begin{remark}[Capacity is not the bottleneck; coverage is]
+\label{rem:consistency}
+Instantiating $f$ as a Gaussian Process Classifier with a universal kernel~\cite{steinwart2001influence} makes it Bayes-consistent: $f\to L$ as labeled data accumulates \emph{on the support of the data-generating distribution}. Universality, however, guarantees nothing off-support: no model capacity can place a guard in a region no demonstration has visited. The GPC contributes the missing half operationally: its epistemic variance is a quantitative surrogate for the set where the hypothesis $f=L$ may fail, and the acquisition function of Sec.~\ref{sec:active} queries exactly there, converting uncovered states into covered ones with safe demonstrations.
+\end{remark} The paper's algorithmic content is therefore aimed at enlarging the region where the hypothesis holds, safely, and Sec.~\ref{sec:experiments} certifies it empirically by measuring invariance-violation and reachability-success rates on the learned regions. In deployment, Algorithm~\ref{alg:supervision} additionally relaxes the idealized instantaneous-crossing rule: a transition is accepted only when it is confident and persistent, which trades an adjustable dwell time against robustness to observation noise near guards.
+
+Proposition~\ref{prop:main} clarifies the division of labor: reachability (Assumption~\ref{as:prim}) supplies task progress and completion, while the learned $f$ serves as a \emph{data-driven invariance monitor}, replacing TLI's hand-engineered sensor model. The remainder of the paper concerns learning $f$ safely and efficiently.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

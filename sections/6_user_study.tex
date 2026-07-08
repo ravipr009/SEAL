@@ -1,0 +1,41 @@
+\section{User Study: Restocking}
+\label{sec:user_study}
+All experiments so far used author-collected demonstrations. Because an LfD method's performance depends on the user, we conduct a study with 10 participants of varying familiarity with kinesthetic teaching and LfD, on a restocking task adapted from Ajanovi\'c et al.~\cite{11369949}. Their supermarket scenario used fixed object locations; our adaptation tracks the bottle and basket dynamically, so the localizer must generalize across spatial configurations. They found that users' preferences varied widely and that segmented demonstrations yielded slightly smoother, more successful policies at the cost of more demonstration time, supporting our use of segmented demonstrations.
+
+\begin{figure*}[t]
+\centering
+\input{Figures/tikz/fig9_restocking}
+\caption{\textbf{Restocking task.} The nominal sequence \textit{Grasp\_Top} $\to$ \textit{Place\_Table} $\to$ \textit{Grasp\_Side} $\to$ \textit{Place\_Shelf}: a cluttered basket forces the top grasp and the low shelf forces the side grasp, so the decomposition isolates the effect of SEAL's active-learning loop.}
+\label{fig:restocking_banner}
+\end{figure*}
+
+Because a cluttered basket forces a top grasp and a low shelf forces a side grasp, the task decomposes into \textit{Grasp\_Top}, \textit{Place\_Table}, \textit{Grasp\_Side}, \textit{Place\_Shelf} (Fig.~\ref{fig:restocking_banner}). We fix the features via the LLM so that only demonstration quality and diversity vary. The protocol: (1) participants give two segmented demonstrations aiming to maximize diversity (the \emph{Unguided} baseline); (2) we seed the GPC with the first demonstration and select 4 uncertain points (two gripper-open, two gripper-closed) via center-weighted epistemic uncertainty; (3) for each point we set up the corresponding scene and ask the participant to label and demonstrate the correct action to completion, yielding 4 sub-demonstrations that, with the first demonstration, form the \emph{SEAL Guided} set; (4) participants answer qualitative questions after each condition. We keep the count at 2 to probe the low-data regime and because participant frustration rose with more demonstrations; requesting 4 short sub-demonstrations (rather than 4 full ones) keeps the SEAL set comparable in points and collection time to the Unguided set while being more intuitive.
+
+We test three hypotheses: (H1) even when explicitly asked to maximize diversity, users produce demonstrations with large state-space overlap; (H2) demonstrations elicited at SEAL's uncertainty queries yield a better classifier than the same user's unguided demonstrations; (H3) users prefer the SEAL protocol. The final dataset comprises 20 sets (one Unguided, one SEAL per participant).
+
+\textbf{Diversity (H1).} Since the first demonstration is shared, we measure the Mean Minimum Distance from points in subsequent demonstrations to same-mode points in the first,
+\[
+\text{MMD}(A,B)=\frac{1}{|B|}\sum_{b\in B}\min_{a\in A}\|a-b\|.
+\]
+The SEAL set ($\mu{=}0.247,\sigma{=}0.078$) is significantly more diverse than Unguided ($\mu{=}0.096,\sigma{=}0.108$), $t{=}4.17$ ($p<0.01$). The Unguided figure is the direct evidence for H1: despite the explicit instruction to maximize diversity, participants' second demonstrations stayed on average within \todo{MMD anchor (co-author): 0.096 is unitless to the reader. Compute a reference scale from the study data---e.g., the diagonal of the $F_{\min}$ bounding box over all demonstrations, or the mean pairwise distance between points of DIFFERENT modes---and restate both MMDs as percentages of it (``Unguided demonstrations stayed within $\sim$X\% of the feature range of the first demonstration''). One line of numpy on the logged study data.} of their first. \todo{given $N{=}10$, add Wilcoxon signed-rank and an effect size alongside each $t$-test in this section (H1 MMD, H2 paired mIoU, H3 mental effort)} Because classifier accuracy is a property of the data rather than of who staged the scene, this and the mIoU result below are robust to the scene-setup confound noted in Sec.~\ref{sec:limitations}.
+
+\textbf{Classifier performance (H2).} We train 10 GPCs per dataset and report mIoU against a ground-truth classification defined by an independently hand-designed automaton over the full feature set (not from any trained model, hence non-circular). Focusing on the per-participant \emph{relative} change to control for individual expertise (Fig.~\ref{fig:participant_perf}), 7 of 10 participants improved with SEAL and 2 others changed within training-run variance, supporting H2 (\todo{report the paired test over the 10 per-participant mIoU pairs---Wilcoxon signed-rank $W$, $p$, effect size}). One participant (P09) declined markedly: they provided labels inconsistent with the ground-truth classification during the SEAL sub-demonstrations, underscoring the method's dependence on label quality (Sec.~\ref{sec:limitations}).
+
+\begin{figure}[htbp]
+\centering
+\input{Figures/tikz/fig10_user_pref}
+\caption{\textbf{User preferences:} more users prefer SEAL guidance over Unguided demonstrations on Comfort, Trust, and Perceived Effectiveness in a head-to-head comparison ($N{=}10$; no participant chose ``Both'').}
+\label{fig:user_pref}
+\end{figure}
+
+\begin{figure}[htbp]
+% Kept as raster: the +-1 SD error-bar magnitudes are not recoverable from the
+% image; redraw in pgfplots once the per-participant mean/SD table is available.
+\centerline{\includegraphics[width=0.5\textwidth]{Figures/miou.png}}
+\caption{\textbf{mIoU per participant} for SEAL- and Unguided-trained models, averaged over 10 runs; error bars show $\pm1$ SD.}
+\label{fig:participant_perf}
+\end{figure}
+
+\textbf{Preferences (H3).} More participants preferred SEAL on Ease of Use, Trust, and Efficiency (Fig.~\ref{fig:user_pref}). Self-reported mental effort dropped slightly with SEAL ($2.6\!\to\!1.8$, $p=0.125$), but physical-effort and ``how hard to achieve a good demonstration'' items showed no significant difference. H3 is thus only partially supported: SEAL is preferred head-to-head, but we cannot claim across-the-board preference at significance, consistent with our small sample and the confound below. Participants were similarly confident in both of their datasets, aligning with our intuition (H1) that users misjudge the diversity and downstream performance of their own demonstrations.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
