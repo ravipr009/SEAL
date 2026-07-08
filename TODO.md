@@ -61,6 +61,10 @@ pass per task. None require new demonstrations.
 - **30 Hz claim** (abstract + Related Work): measure GPC inference latency vs
   dataset size / inducing points on the deployment machine. If it misses 30 Hz
   at realistic sizes, soften the claim instead.
+- **Stage-2 pruning vs failure-relevant features:** verify whether MI minimization
+  could prune an LLM-nominated failure-relevant feature that is near-constant in
+  success-only demos (see Remark on feature/physical semantics in Sec III-B); if
+  yes, implement an exemption and state it in Sec IV-B.
 - **FPS normalization check:** verify in code that continuous features are
   standardized before furthest-point sampling (Eq. sampling). Possible real bug.
 - **Bootstrap CIs on k-NN MI estimates** (N=2–7 demos is small).
