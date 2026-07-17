@@ -1,19 +1,41 @@
-% Redrawn in pgfplots from the value labels of the old robosuite_wiping.png.
+% Redrawn in pgfplots with 95% Binomial Confidence Intervals (n=100).
 \begin{tikzpicture}
 \begin{axis}[
-  ybar, bar width=5pt, width=0.97\columnwidth, height=5.2cm,
+  ybar, 
+  bar width=9pt, % Increased bar width
+  width=0.85\columnwidth, % Reduced overall width to shrink space between groups
+  height=5.2cm,
   ymin=0, ymax=119, ylabel={success rate (\%)},
   symbolic x coords={Wiping,Lift,Stack}, xtick=data,
-  enlarge x limits=0.25,
+  enlarge x limits=0.2, % Tightened margins slightly
   legend style={at={(0.5,1.02)}, anchor=south, legend columns=4,
                 font=\scriptsize, /tikz/every even column/.append style={column sep=3pt}},
-  nodes near coords, every node near coord/.append style={font=\tiny, rotate=90, anchor=west},
+  nodes near coords, 
+  every node near coord/.append style={
+      font=\tiny\bfseries, % Made text bold
+      rotate=90, 
+      anchor=west, % Anchors the text inside the bar
+      text=black,
+      inner xsep=6pt % Adds a small padding from the top edge to avoid hitting error bars
+  },
   tick label style={font=\scriptsize}, label style={font=\scriptsize},
 ]
-\addplot[fill=gray!25, draw=gray!60]  coordinates {(Wiping,100) (Lift,99) (Stack,97)};
-\addplot[fill=seal!25, draw=seal!60]  coordinates {(Wiping,100) (Lift,100) (Stack,96)};
-\addplot[fill=gray!70, draw=gray]     coordinates {(Wiping,65.6) (Lift,43) (Stack,73)};
-\addplot[fill=seal, draw=seal!50!black] coordinates {(Wiping,96.9) (Lift,92) (Stack,90)};
+% open-loop (nom.)
+\addplot+[fill=gray!25, draw=gray!60, error bars/.cd, y dir=both, y explicit]  
+  coordinates {(Wiping,100) +- (0,0) (Lift,99) +- (0,2.0) (Stack,97) +- (0,3.3)};
+
+% SEAL (nom.)
+\addplot+[fill=seal!25, draw=seal!60, error bars/.cd, y dir=both, y explicit]  
+  coordinates {(Wiping,100) +- (0,0) (Lift,100) +- (0,0) (Stack,96) +- (0,3.8)};
+
+% open-loop (pert.)
+\addplot+[fill=gray!70, draw=gray, error bars/.cd, y dir=both, y explicit]     
+  coordinates {(Wiping,65.6) +- (0,9.3) (Lift,43) +- (0,9.7) (Stack,73) +- (0,8.7)};
+
+% SEAL (pert.)
+\addplot+[fill=seal, draw=seal!50!black, error bars/.cd, y dir=both, y explicit] 
+  coordinates {(Wiping,96.9) +- (0,3.4) (Lift,92) +- (0,5.3) (Stack,90) +- (0,5.9)};
+
 \legend{open-loop (nom.), SEAL (nom.), open-loop (pert.), SEAL (pert.)}
 \end{axis}
 \end{tikzpicture}

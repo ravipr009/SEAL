@@ -1,12 +1,19 @@
 % Redrawn in pgfplots from the value labels of the old pref.png.
 \begin{tikzpicture}
 \begin{axis}[
-  ybar, bar width=8pt, width=\columnwidth, height=5.2cm,
-  ymin=0, ymax=10, ylabel={\# participants},
+  ybar, 
+  bar width=12pt, % Increased bar width
+  width=0.85\columnwidth, % Reduced overall width to shrink space between groups
+  height=5.2cm,
+  ymin=0, ymax=10.5, % Slightly increased ymax to give the top labels breathing room
+  ylabel={\# participants},
   symbolic x coords={SEAL,Unguided,Both}, xtick=data,
-  enlarge x limits=0.3,
+  enlarge x limits=0.25, % Tightened outer margins slightly
   legend style={at={(0.97,0.97)}, anchor=north east, font=\scriptsize},
-  nodes near coords, every node near coord/.append style={font=\scriptsize},
+  nodes near coords, 
+  every node near coord/.append style={
+      font=\scriptsize\bfseries % Added bold to match previous style, but kept position default (above bars)
+  },
   tick label style={font=\scriptsize}, label style={font=\scriptsize},
 ]
 \addplot[fill=seal!25, draw=seal!60]      coordinates {(SEAL,6) (Unguided,4) (Both,0)};

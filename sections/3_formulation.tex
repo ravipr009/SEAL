@@ -69,5 +69,8 @@ Instantiating $f$ as a Gaussian Process Classifier with a universal kernel~\cite
 \end{remark} The paper's algorithmic content is therefore aimed at enlarging the region where the hypothesis holds, safely, and Sec.~\ref{sec:experiments} certifies it empirically by measuring invariance-violation and reachability-success rates on the learned regions. In deployment, Algorithm~\ref{alg:supervision} additionally relaxes the idealized instantaneous-crossing rule: a transition is accepted only when it is confident and persistent, which trades an adjustable dwell time against robustness to observation noise near guards.
 
 Proposition~\ref{prop:main} clarifies the division of labor: reachability (Assumption~\ref{as:prim}) supplies task progress and completion, while the learned $f$ serves as a \emph{data-driven invariance monitor}, replacing TLI's hand-engineered sensor model. The remainder of the paper concerns learning $f$ safely and efficiently.
+\textbf{REBUTTAL: 1. In practice due to noise there is always a gap of MI(X,Y) and H(Y) - we never use H(Y). We say that X_min should be as informative for Y as the complete sensor state X_raw. So our asssumption is that X_raw (somehow) is enough to classify Y then we can say that X_min is also enough.
+
+2. Assumption 2 constrains us to use DS policies when any policy (Diffusion, preprogrammed, RL etc) will work as long as it mode invariant and goal reachable. So I think we should say that we assume mode invariance and goal reachability, then uunder finite perturbations we will complete the task (if f=L) }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
