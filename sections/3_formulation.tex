@@ -46,7 +46,7 @@ Definitions~\ref{def:inv}--\ref{def:reach} are stated on $\mathcal{X}_{\min}$, a
 
 \begin{assumption}[Primitive competence]
 \label{as:prim}
-Each primitive $\pi_m$ is a goal-directed dynamical system whose attractor lies in the initiation set of its successor~\cite{burridge1999sequential}. Geometric mode invariance and goal reachability thus hold \emph{by construction}. The residual, physical component of invariance (e.g., ``payload retained'') is not controllable by $\pi_m$ and is precisely what we monitor.
+Each primitive $\pi_m$ achieves geometric mode invariance and goal reachability: from any $\mathbf{x}\in R_m$ its closed-loop flow reaches the nominal guard $G_{m,m'}$ without exiting $R_m$ through a non-nominal boundary. This holds \emph{by construction} for a goal-directed dynamical system whose attractor lies in the successor's initiation set~\cite{burridge1999sequential}, and we assume it of whatever primitive (dynamical system, diffusion policy, RL, or preprogrammed skill) plays that role. The residual, physical component of invariance (e.g., ``payload retained'') is not controllable by $\pi_m$ and is precisely what we monitor.
 \end{assumption}
 
 \subsection{Closed-Loop Behavior}
@@ -66,11 +66,8 @@ The hypothesis $f=L$ on the visited states is the crux: it holds where data has 
 \begin{remark}[Capacity is not the bottleneck; coverage is]
 \label{rem:consistency}
 Instantiating $f$ as a Gaussian Process Classifier with a universal kernel~\cite{steinwart2001influence} makes it Bayes-consistent: $f\to L$ as labeled data accumulates \emph{on the support of the data-generating distribution}. Universality, however, guarantees nothing off-support: no model capacity can place a guard in a region no demonstration has visited. The GPC contributes the missing half operationally: its epistemic variance is a quantitative surrogate for the set where the hypothesis $f=L$ may fail, and the acquisition function of Sec.~\ref{sec:active} queries exactly there, converting uncovered states into covered ones with safe demonstrations.
-\end{remark} The paper's algorithmic content is therefore aimed at enlarging the region where the hypothesis holds, safely, and Sec.~\ref{sec:experiments} certifies it empirically by measuring invariance-violation and reachability-success rates on the learned regions. In deployment, Algorithm~\ref{alg:supervision} additionally relaxes the idealized instantaneous-crossing rule: a transition is accepted only when it is confident and persistent, which trades an adjustable dwell time against robustness to observation noise near guards.
+\end{remark} The paper's algorithmic content is therefore aimed at enlarging the region where the hypothesis holds, safely, and Sec.~\ref{sec:experiments} demonstrates that, with $f$ so learned, the closed-loop system completes the task and recovers from perturbations as Proposition~\ref{prop:main} predicts. In deployment, Algorithm~\ref{alg:supervision} additionally relaxes the idealized instantaneous-crossing rule: a transition is accepted only when it is confident and persistent, which trades an adjustable dwell time against robustness to observation noise near guards.
 
 Proposition~\ref{prop:main} clarifies the division of labor: reachability (Assumption~\ref{as:prim}) supplies task progress and completion, while the learned $f$ serves as a \emph{data-driven invariance monitor}, replacing TLI's hand-engineered sensor model. The remainder of the paper concerns learning $f$ safely and efficiently.
-\textbf{REBUTTAL: 1. In practice due to noise there is always a gap of MI(X,Y) and H(Y) - we never use H(Y). We say that X_min should be as informative for Y as the complete sensor state X_raw. So our asssumption is that X_raw (somehow) is enough to classify Y then we can say that X_min is also enough.
-
-2. Assumption 2 constrains us to use DS policies when any policy (Diffusion, preprogrammed, RL etc) will work as long as it mode invariant and goal reachable. So I think we should say that we assume mode invariance and goal reachability, then uunder finite perturbations we will complete the task (if f=L) }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

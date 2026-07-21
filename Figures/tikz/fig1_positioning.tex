@@ -1,37 +1,103 @@
-% New positioning figure: the task automaton is SHARED; only how the localization
-% function L is obtained differs across TLI (hand-designed), GLiDE (learned via
-% perturb+reset+oracle), and SEAL (learned from safe segmented demos).
-\resizebox{\columnwidth}{!}{%
+% Positioning figure: the task automaton is SHARED; only how the localization
+% function L is obtained differs across four groundings of the guard:
+%   1. Hand-designed  -- analytic thresholds, no data (the naive strawman)
+%   2. TLI            -- analytic sensor/mode model grounded to the robot
+%   3. GLiDE          -- learned via perturb+reset+oracle (induced failures)
+%   4. SEAL           -- learned from safe segmented demos + targeted queries
+\resizebox{\textwidth}{!}{%
 \begin{tikzpicture}[>=Latex, font=\small,
   mode/.style={circle, draw, thick, minimum size=7.5mm, inner sep=0pt},
 ]
-% ---------- Top: the shared, designed automaton ----------
-\node[mode] (a) {$a$};
-\node[mode, right=12mm of a] (b) {$b$};
-\node[mode, right=12mm of b] (c) {$c$};
-\node[mode, right=12mm of c, double, double distance=1pt] (d) {$d$};
-\node[above=0pt of a, font=\scriptsize] {Scoop};
-\node[above=0pt of b, font=\scriptsize] {Transport};
-\node[above=0pt of c, font=\scriptsize] {Deposit};
-\node[above=0pt of d, font=\scriptsize] {Done};
+% ---------- Top: illustrated task automaton (schematic Franka per mode) ----------
+% Every scene keeps BOTH vessels: bowl (source, always holding rice) on the left,
+% plate (deposit) on the right. The arm is lifted into the upper part of each box
+% and translates rightward across the sequence. Transport shows the FAILURE (rice
+% spilled to the floor, plate still empty, arm heading back to the bowl); Deposit
+% shows the correct drop into the plate; Done shows the finished heap.
+\begin{scope}[
+  rstate/.style={draw, rounded corners, semithick, inner sep=1pt, fill=white,
+                 minimum width=1.95cm, minimum height=2.4cm},
+  vessel/.style={semithick},
+  riced/.style={fill=orange!65, draw=orange!80!black, line width=0.15pt},
+]
+\def\franka#1{\includegraphics[angle=#1, origin=c, height=1.3cm]{Figures/franka-sketch.png}}
+% reusable props: a bowl with a rice dome, and an empty plate, drawn at a coordinate
+\def\bowlrice#1{%
+  \draw[vessel] ($#1+(-2.3mm,1.3mm)$) arc (180:360:2.3mm and 1.35mm);
+  \fill[riced] ($#1+(-1.7mm,0.15mm)$) .. controls +(0.7mm,1.5mm) and +(-0.7mm,1.5mm) .. ($#1+(1.7mm,0.15mm)$) -- cycle;}
+\def\plate#1{%
+  \draw[vessel] ($#1+(-2.7mm,0.5mm)$) .. controls +(1.2mm,-1.6mm) and +(-1.2mm,-1.6mm) .. ($#1+(2.7mm,0.5mm)$);}
+\def\floorline#1{\draw[gray!45] ([xshift=-8.5mm,yshift=-9.5mm]#1.center) -- ([xshift=8.5mm,yshift=-9.5mm]#1.center);}
+% state boxes
+\node[rstate] (a) at (1.7,0) {};
+\node[rstate] (b) at (5.4,0) {};
+\node[rstate] (c) at (9.1,0) {};
+\node[rstate, double, double distance=1pt] (d) at (12.8,0) {};
+% arms (upper part), translating rightward across the sequence
+\node at ([xshift=-2mm,yshift=4mm]a.center) {\franka{-6}};
+\node at ([xshift=1mm,yshift=4mm]b.center)  {\franka{2}};
+\node at ([xshift=4mm,yshift=4mm]c.center)  {\franka{8}};
+\node at ([xshift=4mm,yshift=4mm]d.center)  {\franka{3}};
+% mode labels
+\node[font=\scriptsize\bfseries, below=1mm of a.south] (la) {Scoop};
+\node[font=\scriptsize\bfseries, below=1mm of b.south] (lb) {Transport};
+\node[font=\scriptsize\bfseries, below=1mm of c.south] (lc) {Deposit};
+\node[font=\scriptsize\bfseries, below=1mm of d.south] (ld) {Done};
+% ===== Scoop: lift rice from the full bowl =====
+\floorline{a}
+\coordinate (aB) at ([xshift=-5mm,yshift=-8mm]a.center);
+\coordinate (aP) at ([xshift=5mm,yshift=-8.5mm]a.center);
+\bowlrice{(aB)} \plate{(aP)}
+\coordinate (aG) at ([xshift=-6mm,yshift=3mm]a.center);
+\draw[->, gray, semithick] ([yshift=1.6mm]aB) .. controls +(0mm,3mm) and +(-1mm,-3mm) .. (aG);
+% ===== Transport: FAILURE -- rice spills to the floor; plate still empty; arm returns =====
+\floorline{b}
+\coordinate (bB) at ([xshift=-5mm,yshift=-8mm]b.center);
+\coordinate (bP) at ([xshift=5mm,yshift=-8.5mm]b.center);
+\bowlrice{(bB)} \plate{(bP)}
+\coordinate (bG) at ([xshift=-3mm,yshift=3mm]b.center);
+% rice streaming down from the gripper and scattered on the floor
+\foreach \yy in {2,0,-2,-4,-6} \fill[riced] ([xshift=-2mm,yshift=\yy mm]b.center) circle (0.42mm);
+\foreach \p in {(-3.2mm,-9mm),(-1.8mm,-9.2mm),(-0.4mm,-9mm),(-2.4mm,-9.3mm)} \fill[riced] ([shift=\p]b.center) circle (0.42mm);
+% recovery: arm heads back to the bowl
+\draw[->, red, dashed, semithick] (bG) .. controls +(-2mm,2.5mm) and +(1mm,3mm) .. ([xshift=-5mm,yshift=3mm]b.center);
+\node[red, font=\tiny, anchor=west] at ([xshift=1mm,yshift=-4mm]b.center) {spill};
+% ===== Deposit: rice dropped correctly into the plate =====
+\floorline{c}
+\coordinate (cB) at ([xshift=-5mm,yshift=-8mm]c.center);
+\coordinate (cP) at ([xshift=5mm,yshift=-8.5mm]c.center);
+\bowlrice{(cB)} \plate{(cP)}
+\coordinate (cG) at ([xshift=0mm,yshift=3mm]c.center);
+\draw[->, gray, semithick] (cG) .. controls +(2mm,-2mm) and +(-2mm,3mm) .. ([yshift=1.4mm]cP);
+\foreach \p in {(1mm,-1mm),(2.3mm,-2.8mm),(3.6mm,-4.6mm)} \fill[riced] ([shift=\p]cG) circle (0.42mm);
+\fill[riced] ([xshift=-1mm,yshift=0.5mm]cP) circle (0.42mm);
+\fill[riced] ([xshift=0.7mm,yshift=0.5mm]cP) circle (0.42mm);
+% ===== Done: orange heap in the plate =====
+\floorline{d}
+\coordinate (dB) at ([xshift=-5mm,yshift=-8mm]d.center);
+\coordinate (dP) at ([xshift=5mm,yshift=-8.5mm]d.center);
+\bowlrice{(dB)} \plate{(dP)}
+\fill[riced] ($(dP)+(-2.2mm,0.4mm)$) .. controls +(1mm,2mm) and +(-1mm,2mm) .. ($(dP)+(2.2mm,0.4mm)$) -- cycle;
+\node[green!55!black, font=\footnotesize] at ([xshift=2.6mm,yshift=2.4mm]dP) {\faCheck};
+% transitions
 \draw[->,thick] (a) -- (b);
 \draw[->,thick] (b) -- (c);
 \draw[->,thick] (c) -- (d);
-\draw[->, thick, red] (b) to[bend left=48] node[below=0.5pt, midway, font=\tiny, red] {recovery} (a);
+\draw[->, thick, red] (b) to[bend left=30] node[midway, above=0pt, font=\tiny, red] {recovery} (a);
 \begin{scope}[on background layer]
-  \node[draw, dashed, rounded corners, inner xsep=4.5mm, inner ysep=6mm, fit=(a)(b)(c)(d)] (auto) {};
+  \node[draw, dashed, rounded corners, inner xsep=4mm, inner ysep=3.5mm, fit=(a)(b)(c)(d)(la)(lb)(lc)(ld)] (auto) {};
 \end{scope}
-\node[anchor=west, font=\bfseries\small] at ([yshift=1mm]auto.north west)
-  {Designed task automaton \normalfont(shared by all three methods)};
+\node[anchor=west, font=\bfseries\small] at ([yshift=1.5mm]auto.north west)
+  {Designed task automaton \normalfont(shared by all four methods)};
 \node[font=\scriptsize\itshape, below=0.5mm of auto.south]
   {reactivity $=$ localizing the state onto the correct mode: where is the guard?};
+\end{scope}
 
-% ---------- Bottom: the SAME guard, obtained three ways ----------
+% ---------- Bottom: the SAME guard, obtained four ways ----------
 % Panel geometry: width 3.5, height 2.7. True guard: load falls as tilt grows.
-% Macro-ish: draw each panel in a shifted scope.
 %
-% ---- Panel 1: TLI (hand-placed thresholds, no data) ----
-\begin{scope}[shift={(-1.35,-4.6)}]
+% ---- Panel 1: Hand-designed (naive axis-aligned thresholds, no data) ----
+\begin{scope}[shift={(-1.35,-5.4)}]
   \draw[->] (0,0) -- (3.5,0) node[below left, font=\tiny] {tilt $\theta$};
   \draw[->] (0,0) -- (0,2.7) node[rotate=90, anchor=south east, font=\tiny] {load $F$};
   % true boundary (unknown to the designer)
@@ -52,12 +118,35 @@
   % region labels: above the guard rice is retained, below it is lost
   \node[gray, font=\tiny\itshape, anchor=west] at (2.30,2.45) {$R_{\text{transport}}$: rice on};
   \node[gray, font=\tiny\itshape] at (0.85,0.40) {rice lost $\to$ Scoop};
-  \node[font=\scriptsize\bfseries, tli, anchor=north] at (1.75,-0.42) {\faDraftingCompass~TLI: hand-placed};
-  \node[font=\tiny, tli, anchor=north] at (1.75,-0.82) {no data consulted};
+  \node[font=\scriptsize\bfseries, tli, anchor=north] at (1.75,-0.42) {\faDraftingCompass~Hand-designed};
+  \node[font=\tiny, tli, anchor=north] at (1.75,-0.82) {analytic model only, no data};
 \end{scope}
 %
-% ---- Panel 2: GLiDE (fit to induced failures) ----
-\begin{scope}[shift={(3.05,-4.6)}]
+% ---- Panel 2: TLI (analytic sensor/mode model grounded to the robot) ----
+% DRAFT characterization -- co-author to verify against wang2022temporal.
+\begin{scope}[shift={(3.05,-5.4)}]
+  \draw[->] (0,0) -- (3.5,0) node[below left, font=\tiny] {tilt $\theta$};
+  \draw[->] (0,0) -- (0,2.7);
+  % true boundary
+  \draw[gray!70, thick, dashed]
+    (0.25,2.15) .. controls (1.4,1.95) and (2.1,1.15) .. (3.2,0.55);
+  % TLI's guard: model-derived curve, grounded to the robot so it hugs the truth
+  \draw[tliblue, very thick]
+    (0.30,2.05) .. controls (1.4,1.82) and (2.1,1.07) .. (3.2,0.49);
+  % a few grounding observations used to transfer the boundary to robot space
+  \foreach \p in {(2.35,0.85),(2.75,0.60),(1.95,1.14)}
+    \node[red!75, font=\tiny] at \p {$\times$};
+  \node[tliblue, font=\tiny, anchor=west] at (0.15,0.15)
+    {analytic model $+$ few \textcolor{red!75}{$\times$} to ground it};
+  % region labels
+  \node[gray, font=\tiny\itshape, anchor=east] at (3.35,2.35) {rice on};
+  \node[gray, font=\tiny\itshape] at (0.85,0.40) {rice lost};
+  \node[font=\scriptsize\bfseries, tliblue, anchor=north] at (1.75,-0.42) {\faRulerCombined~Model-grounded};
+  \node[font=\tiny, tliblue, anchor=north] at (1.75,-0.82) {e.g.\ TLI: model $+$ little data};
+\end{scope}
+%
+% ---- Panel 3: GLiDE (fit to induced failures) ----
+\begin{scope}[shift={(7.45,-5.4)}]
   \draw[->] (0,0) -- (3.5,0) node[below left, font=\tiny] {tilt $\theta$};
   \draw[->] (0,0) -- (0,2.7);
   % failure cloud (below/right of true boundary)
@@ -76,12 +165,12 @@
   \node[gray, font=\tiny\itshape] at (0.85,0.40) {rice lost};
   \node[glide, font=\tiny, anchor=west] at (0.15,0.15)
     {$\bullet$ valid\ \ \textcolor{red!75}{$\times$} invalid transition (oracle)};
-  \node[font=\scriptsize\bfseries, glide, anchor=north] at (1.75,-0.42) {\faExclamationTriangle~GLiDE: fit to failure};
-  \node[font=\tiny, glide, anchor=north] at (1.75,-0.82) {$1000$s of spills \faRedo\ resets + oracle};
+  \node[font=\scriptsize\bfseries, glide, anchor=north] at (1.75,-0.42) {\faExclamationTriangle~Failure-driven};
+  \node[font=\tiny, glide, anchor=north] at (1.75,-0.82) {e.g.\ GLiDE: many failures \faRedo\ oracle};
 \end{scope}
 %
-% ---- Panel 3: SEAL (fit to success only) ----
-\begin{scope}[shift={(7.45,-4.6)}]
+% ---- Panel 4: SEAL (fit to success only) ----
+\begin{scope}[shift={(11.85,-5.4)}]
   \draw[->] (0,0) -- (3.5,0) node[below left, font=\tiny] {tilt $\theta$};
   \draw[->] (0,0) -- (0,2.7);
   % a few safe demonstration trajectories (stay on the safe side of the guard)
@@ -105,12 +194,13 @@
   % fitted boundary hugs the truth
   \draw[seal, very thick]
     (0.25,2.15) .. controls (1.4,1.95) and (2.1,1.15) .. (3.2,0.55);
-  \node[font=\scriptsize\bfseries, seal, anchor=north] at (1.75,-0.42) {\faIcon{shield-alt}~SEAL: fit to success};
-  \node[font=\tiny, seal, anchor=north] at (1.75,-0.82) {few safe demos + targeted queries};
+  \node[font=\scriptsize\bfseries, seal, anchor=north] at (1.75,-0.42) {\faIcon{shield-alt}~Success-driven (SEAL)};
+  \node[font=\tiny, seal, anchor=north] at (1.75,-0.82) {safe demos $+$ targeted queries};
 \end{scope}
 %
-% connective tissue: all three feed the same L
-\node[font=\scriptsize\itshape] at (4.8,-6.9)
-  {three ways to obtain the same object: the localization function $L:\ \mathcal{X}_{\min}\!\to\!\mathcal{M}$};
+% connective tissue: all four feed the same L
+\node[font=\scriptsize\itshape] at (7.0,-6.9)
+  {four ways to obtain the same object: the localization function $L:\ \mathcal{X}_{\min}\!\to\!\mathcal{M}$
+   \ \ (model only $\to$ model$+$few failures $\to$ many failures $\to$ success only)};
 \end{tikzpicture}%
 }
