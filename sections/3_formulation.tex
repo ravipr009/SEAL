@@ -31,17 +31,15 @@ Two assumptions make the problem well-posed. The first is what allows a \emph{me
 
 \begin{assumption}[Instantaneous observability]
 \label{as:obs}
-The mode is identifiable from the instantaneous feature vector: $L$ is well-defined on $\mathcal{X}_{\min}$, i.e., the regions $\{R_m\}$ do not overlap. Operationally, we certify this by requiring the joint mutual information between features and labels to approach the label entropy, $I(X_{\min};Y)\approx H(Y)$ (Sec.~\ref{sec:feature_engineering}).
+The discrete mode $Y$ is identifiable from the raw grounded state $X_{\text{raw}}$ up to irreducible observation noise, making $\mathcal{X}_{\text{raw}}$ a sufficient representation. A reduced feature space $\mathcal{X}_{\min}$ is therefore considered instantaneously observable if it preserves the mode-relevant information of the raw space, satisfying $I(X_{\min}; Y) \approx I(X_{\text{raw}}; Y)$. Under this condition, the nominal localization function $L$ is well-defined on $\mathcal{X}_{\min}$ outside the inherent noise floor.
 \end{assumption}
 
-\begin{remark}[Scope of the certificate]
-\label{rem:scope}
-The MI certificate is estimated on the \emph{demonstrated} distribution, so it certifies separability on the support of the demonstrations, not on all of $\mathcal{X}_{\min}$. Perturbations, however, drive the state into precisely the regions demonstrations never visit. Closing this gap (extending the region on which $f$ agrees with $L$ beyond the initial demonstrations, using only safe data) is the role of uncertainty-targeted active querying (Sec.~\ref{sec:active}).
-\end{remark}
 
 \begin{remark}[Feature-space vs.\ physical-space semantics]
 \label{rem:aliasing}
-Definitions~\ref{def:inv}--\ref{def:reach} are stated on $\mathcal{X}_{\min}$, and they coincide with their physical counterparts exactly under two conditions: (i) Assumption~\ref{as:obs} holds on the visited states, so that no two physically distinct situations with different modes alias to the same feature point; and (ii) every failure-relevant physical variable is represented in $F_{\min}$; a violation carried by a variable outside $F_{\min}$ is undetectable by construction. Condition~(ii) is not implied by the MI certificate: the certificate is computed on \emph{success-only} demonstrations, on which a failure-indicating feature (e.g., payload presence in a task where no demonstration ever drops the payload) may be nearly constant and would be pruned as redundant by nominal MI alone. This is why the semantic prior of Sec.~\ref{sec:feature_engineering} is prompted \emph{prescriptively}, to nominate failure-relevant features, and why such features must be retained through minimization even when their nominal MI contribution is small.
+Definitions~\ref{def:inv}--\ref{def:reach} are stated on $\mathcal{X}_{\min}$, and they coincide with their physical counterparts exactly under two conditions: (i) Assumption~\ref{as:obs} holds on the visited states, so that no two physically distinct situations with different modes alias to the same feature point; and (ii) every failure-relevant physical variable is represented in $F_{\min}$; a violation carried by a variable outside $F_{\min}$ is undetectable by construction. 
+
+Condition~(ii) is not implied by the MI certificate (which only ensures $I(X_{\min}; Y) \approx I(X_{\text{raw}}; Y)$). Because the empirical MI is computed on \emph{success-only} demonstrations, a failure-indicating feature (e.g., payload presence in a task where no demonstration ever drops the payload) has near-zero variance and contributes nothing to the empirical MI. Dropping it causes no measured information loss, meaning mathematical minimization alone would prune it as redundant. This is why the semantic prior of Sec.~\ref{sec:feature_engineering} is prompted \emph{prescriptively}, to nominate failure-relevant features, and why such features must be retained through minimization even when their nominal MI contribution is negligible.
 \end{remark}
 
 \begin{assumption}[Primitive competence]
